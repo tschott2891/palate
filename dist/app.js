@@ -23,6 +23,13 @@ const catalog = {
 };
 
 const state = { category: 'coffee', step: 1, reaction: '', notes: [] };
+const TASTINGS_KEY = 'palate-tastings';
+const DRAFT_KEY = 'palate-draft';
+const samples = [
+  { id: 'sample-ethiopia', category: 'coffee', name: 'Ethiopia · Worka Sakaro', reaction: 'Lovely', notes: ['Bergamot', 'Peach'], date: 'Oct 23' },
+  { id: 'sample-rioja', category: 'wine', name: 'Rioja Reserva · 2018', reaction: 'Memorable', notes: ['Cherry', 'Leather'], date: 'Oct 18' },
+  { id: 'sample-talisker', category: 'scotch', name: 'Talisker 10', reaction: 'Interesting', notes: ['Smoke', 'Coastal'], date: 'Oct 12' }
+];
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const dialog = $('#tastingDialog');
@@ -57,11 +64,14 @@ function showView(name) {
 }
 
 function openTasting() {
-  state.step = 1; state.reaction = ''; state.notes = [];
-  $('#productName').value = '';
-  $('#personalNote').value = '';
+  const draft = readDraft();
+  state.step = 1; state.reaction = draft?.reaction || ''; state.notes = draft?.notes || [];
+  if (draft?.category) setCategory(draft.category);
+  $('#productName').value = draft?.name || '';
+  $('#personalNote').value = draft?.personalNote || '';
   $$('.reactions button').forEach(b => b.classList.remove('selected'));
   buildCategoryFields();
+  $$('.reactions button').forEach(b => b.classList.toggle('selected', b.dataset.reaction === state.reaction));
   updateStep();
   dialog.showModal();
   setTimeout(() => $('#productName').focus(), 180);
@@ -79,9 +89,10 @@ function buildCategoryFields() {
   }).join('');
   $$('.suggestion').forEach(b => b.addEventListener('click', () => { $('#productName').value = b.textContent; }));
   $$('.note-chip').forEach(b => b.addEventListener('click', () => {
-    b.classList.toggle('selected');
+    b.classList.toggle('selected', !b.classList.contains('selected'));
     state.notes = $$('.note-chip.selected').map(n => n.dataset.note);
   }));
+  $$('.note-chip').forEach(b => b.classList.toggle('selected', state.notes.includes(b.dataset.note)));
 }
 
 function updateStep() {
@@ -109,31 +120,46 @@ function saveTasting() {
     reaction: state.reaction || 'Noted', notes: state.notes,
     personalNote: $('#personalNote').value.trim(), date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   };
-  const saved = JSON.parse(localStorage.getItem('palate-tastings') || '[]');
-  localStorage.setItem('palate-tastings', JSON.stringify([entry, ...saved]));
+  const saved = readTastings();
+  localStorage.setItem(TASTINGS_KEY, JSON.stringify([entry, ...saved]));
+  localStorage.removeItem(DRAFT_KEY);
   $('#successTitle').textContent = `${entry.name}, remembered.`;
   $('#successCopy').textContent = entry.notes.length ? `You noticed ${naturalList(entry.notes)}.` : 'A simple impression is still a useful one.';
   $('#successOrb').style.background = orbFor(entry.category);
   $('#summaryCard').innerHTML = `<strong>${entry.reaction}</strong>${capitalize(entry.category)}${entry.notes.length ? ` · ${entry.notes.join(' · ')}` : ''}`;
   addRecent(entry);
+  renderJournal(activeFilter());
 }
 
 function addRecent(entry) {
   const row = document.createElement('button');
   row.className = 'tasting-row';
-  row.innerHTML = `<span class="drink-dot ${entry.category}-dot"></span><span class="tasting-main"><strong>${entry.name}</strong><small>${capitalize(entry.category)} · ${entry.reaction.toLowerCase()}</small></span><span class="tasting-date">Today</span><span class="chevron">›</span>`;
+  row.innerHTML = `<span class="drink-dot ${entry.category}-dot"></span><span class="tasting-main"><strong>${escapeHtml(entry.name)}</strong><small>${capitalize(entry.category)} · ${escapeHtml(entry.reaction.toLowerCase())}</small></span><span class="tasting-date">Today</span><span class="chevron">›</span>`;
   $('#tastingList').prepend(row);
 }
 
-function renderJournal() {
-  const saved = JSON.parse(localStorage.getItem('palate-tastings') || '[]');
-  const samples = [
-    { category: 'coffee', name: 'Ethiopia · Worka Sakaro', reaction: 'Lovely', notes: ['Bergamot', 'Peach'], date: 'Oct 23' },
-    { category: 'wine', name: 'Rioja Reserva · 2018', reaction: 'Memorable', notes: ['Cherry', 'Leather'], date: 'Oct 18' },
-    { category: 'scotch', name: 'Talisker 10', reaction: 'Interesting', notes: ['Smoke', 'Coastal'], date: 'Oct 12' }
-  ];
-  $('#journalGrid').innerHTML = [...saved, ...samples].map(e => `<article class="journal-card"><div><span class="drink-dot ${e.category}-dot"></span><h3>${e.name}</h3><p>${e.notes?.length ? e.notes.join(' · ') : 'A first impression, saved.'}</p></div><footer><span>${e.reaction}</span><span>${e.date}</span></footer></article>`).join('');
+function renderRecent() {
+  const saved = readTastings();
+  const recent = [...saved, ...samples.filter(sample => !saved.some(entry => entry.name === sample.name))].slice(0, 3);
+  $('#tastingList').innerHTML = '';
+  recent.slice().reverse().forEach(addRecent);
 }
+
+function activeFilter() { return $('.filter.active')?.dataset.filter || 'all'; }
+
+function renderJournal(filter = 'all') {
+  const all = [...readTastings(), ...samples];
+  const entries = filter === 'all' ? all : all.filter(entry => entry.category === filter);
+  $('#journalGrid').innerHTML = entries.map(e => `<article class="journal-card"><div><span class="drink-dot ${e.category}-dot"></span><h3>${escapeHtml(e.name)}</h3><p>${e.notes?.length ? e.notes.map(escapeHtml).join(' · ') : 'A first impression, saved.'}</p></div><footer><span>${escapeHtml(e.reaction)}</span><span>${escapeHtml(e.date)}</span></footer></article>`).join('') || '<p class="empty-state">Nothing here yet. Your next tasting will find its place.</p>';
+}
+
+function readTastings() { return JSON.parse(localStorage.getItem(TASTINGS_KEY) || '[]'); }
+function readDraft() { return JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); }
+function saveDraft() {
+  const draft = { category: state.category, name: $('#productName').value.trim(), reaction: state.reaction, notes: state.notes, personalNote: $('#personalNote').value.trim() };
+  localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+}
+function escapeHtml(value) { const node = document.createElement('span'); node.textContent = value || ''; return node.innerHTML; }
 
 function showToast(message) {
   const toast = $('#toast'); toast.textContent = message; toast.classList.add('show');
@@ -149,7 +175,7 @@ $('#beginTasting').addEventListener('click', openTasting);
 $('#quickAdd').addEventListener('click', openTasting);
 $('#nextStep').addEventListener('click', nextStep);
 $('#prevStep').addEventListener('click', () => { if (state.step > 1) { state.step -= 1; updateStep(); } });
-$('#saveExit').addEventListener('click', () => { showToast('Draft saved for later.'); dialog.close(); });
+$('#saveExit').addEventListener('click', () => { saveDraft(); showToast('Draft saved for later.'); dialog.close(); });
 $$('.reactions button').forEach(b => b.addEventListener('click', () => { $$('.reactions button').forEach(x => x.classList.remove('selected')); b.classList.add('selected'); state.reaction = b.dataset.reaction; }));
 $$('[data-home]').forEach(b => b.addEventListener('click', () => showView('home')));
 $('#viewJournal').addEventListener('click', () => showView('journal'));
@@ -157,6 +183,7 @@ $$('.nav-item').forEach(b => b.addEventListener('click', () => {
   if (['home', 'journal'].includes(b.dataset.nav)) showView(b.dataset.nav);
   else showToast(`${capitalize(b.dataset.nav)} is intentionally out of scope—for now.`);
 }));
-$$('.filter').forEach(b => b.addEventListener('click', () => { $$('.filter').forEach(x => x.classList.remove('active')); b.classList.add('active'); showToast(`${b.textContent} filter selected.`); }));
+$$('.filter').forEach(b => b.addEventListener('click', () => { $$('.filter').forEach(x => x.classList.remove('active')); b.classList.add('active'); renderJournal(b.dataset.filter); }));
 setCategory('coffee');
+renderRecent();
 renderJournal();

@@ -90,6 +90,7 @@ h1 em { color: var(--sage); font-weight: 400; }
 .journal-card h3 { margin: 0 0 7px; font: 400 22px var(--serif); }
 .journal-card p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .journal-card footer { display: flex; justify-content: space-between; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .1em; }
+.empty-state { grid-column: 1 / -1; padding: 34px 0; color: var(--muted); font: italic 18px var(--serif); }
 
 dialog { width: min(100%, 720px); height: min(92vh, 760px); padding: 0; border: 0; border-radius: 8px; background: var(--paper); box-shadow: 0 40px 100px rgba(0,0,0,.3); }
 dialog::backdrop { background: rgba(20,22,19,.72); backdrop-filter: blur(8px); }
