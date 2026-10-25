@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f3efe6">
+  <title>Palate — Tasting Companion</title>
+  <meta name="description" content="A calm, guided tasting journal for coffee, wine, and Scotch.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+
+  <main class="shell" aria-label="Palate tasting companion prototype">
+    <header class="topbar">
+      <button class="wordmark" data-home aria-label="Go to home">
+        <span class="mark">P</span><span>PALATE</span>
+      </button>
+      <button class="avatar" aria-label="Open profile">TS</button>
+    </header>
+
+    <section id="homeView" class="view is-active">
+      <div class="intro">
+        <p class="eyebrow">Sunday, October 25</p>
+        <h1>What are you<br><em>tasting?</em></h1>
+        <p class="lede">Notice more. Remember what matters.</p>
+      </div>
+
+      <div class="category-switcher" role="tablist" aria-label="Beverage type">
+        <button class="category active" role="tab" aria-selected="true" data-category="coffee">Coffee</button>
+        <button class="category" role="tab" aria-selected="false" data-category="wine">Wine</button>
+        <button class="category" role="tab" aria-selected="false" data-category="scotch">Scotch</button>
+      </div>
+
+      <article class="focus-card" id="focusCard">
+        <div class="focus-copy">
+          <div class="card-kicker"><span class="pulse"></span><span id="focusKicker">Ready when you are</span></div>
+          <h2 id="focusTitle">Brew with intention.</h2>
+          <p id="focusDescription">A guided tasting that stays out of the way.</p>
+          <button class="primary" id="beginTasting">Begin a tasting <span aria-hidden="true">↗</span></button>
+        </div>
+        <div class="specimen coffee" id="specimen" aria-hidden="true">
+          <div class="specimen-ring"></div>
+          <div class="specimen-core"></div>
+          <span class="specimen-label">01</span>
+        </div>
+      </article>
+
+      <section class="recent-section" aria-labelledby="recentTitle">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Your journal</p>
+            <h2 id="recentTitle">Recent moments</h2>
+          </div>
+          <button class="text-button" id="viewJournal">View all <span>→</span></button>
+        </div>
+
+        <div class="tasting-list" id="tastingList">
+          <button class="tasting-row" data-sample="ethiopia">
+            <span class="drink-dot coffee-dot"></span>
+            <span class="tasting-main"><strong>Ethiopia · Worka Sakaro</strong><small>V60 · bright &amp; floral</small></span>
+            <span class="tasting-date">Oct 23</span>
+            <span class="chevron">›</span>
+          </button>
+          <button class="tasting-row" data-sample="rioja">
+            <span class="drink-dot wine-dot"></span>
+            <span class="tasting-main"><strong>Rioja Reserva · 2018</strong><small>Wine · savory &amp; composed</small></span>
+            <span class="tasting-date">Oct 18</span>
+            <span class="chevron">›</span>
+          </button>
+        </div>
+      </section>
+
+      <aside class="insight-card">
+        <span class="insight-icon">✦</span>
+        <div><p class="eyebrow">A note from your palate</p><p>You seem drawn to <strong>bright, fruit-led</strong> flavors. We’ll keep watching.</p></div>
+      </aside>
+    </section>
+
+    <section id="journalView" class="view">
+      <div class="page-head">
+        <button class="back-button" data-home aria-label="Back to home">←</button>
+        <div><p class="eyebrow">Your history</p><h1>The journal</h1></div>
+      </div>
+      <div class="filter-row">
+        <button class="filter active">All</button><button class="filter">Coffee</button><button class="filter">Wine</button><button class="filter">Scotch</button>
+      </div>
+      <div class="journal-grid" id="journalGrid"></div>
+    </section>
+
+    <nav class="bottom-nav" aria-label="Primary navigation">
+      <button class="nav-item active" data-nav="home"><span>⌂</span>Today</button>
+      <button class="nav-item" data-nav="journal"><span>◫</span>Journal</button>
+      <button class="add-button" id="quickAdd" aria-label="Begin a tasting">+</button>
+      <button class="nav-item" data-nav="discover"><span>◇</span>Discover</button>
+      <button class="nav-item" data-nav="profile"><span>○</span>You</button>
+    </nav>
+  </main>
+
+  <dialog id="tastingDialog" aria-labelledby="dialogTitle">
+    <form method="dialog" class="dialog-shell" id="tastingForm">
+      <div class="dialog-top">
+        <button class="close-button" value="cancel" aria-label="Close tasting">×</button>
+        <span class="step-count" id="stepCount">1 of 4</span>
+        <button type="button" class="save-exit" id="saveExit">Save &amp; exit</button>
+      </div>
+      <div class="progress"><span id="progressBar"></span></div>
+
+      <div class="step is-active" data-step="1">
+        <p class="eyebrow" id="stepEyebrow">Coffee tasting</p>
+        <h2 id="dialogTitle">What’s in your cup?</h2>
+        <p class="step-help">Start with a name. Everything else can wait.</p>
+        <label class="floating-field"><span>Name or producer</span><input id="productName" autocomplete="off" placeholder="e.g. Worka Sakaro"></label>
+        <div class="suggestions" id="suggestions"></div>
+      </div>
+
+      <div class="step" data-step="2">
+        <p class="eyebrow">First impression</p>
+        <h2>How did it feel?</h2>
+        <p class="step-help">Your instinct is enough. You can add nuance next.</p>
+        <div class="reactions">
+          <button type="button" data-reaction="Not for me"><span>—</span>Not for me</button>
+          <button type="button" data-reaction="Interesting"><span>~</span>Interesting</button>
+          <button type="button" data-reaction="Lovely"><span>+</span>Lovely</button>
+          <button type="button" data-reaction="Memorable"><span>✦</span>Memorable</button>
+        </div>
+      </div>
+
+      <div class="step" data-step="3">
+        <p class="eyebrow">Notice, don’t search</p>
+        <h2>What stood out?</h2>
+        <p class="step-help">Choose only what you noticed. There are no wrong answers.</p>
+        <div class="note-cloud" id="noteCloud"></div>
+        <label class="note-field"><span>Your own words</span><textarea id="personalNote" placeholder="A fleeting thought, a memory, a detail…"></textarea></label>
+      </div>
+
+      <div class="step" data-step="4">
+        <p class="eyebrow">Optional detail</p>
+        <h2 id="detailTitle">How did you make it?</h2>
+        <p class="step-help">Useful later, invisible when you don’t need it.</p>
+        <div class="detail-panel" id="detailPanel"></div>
+        <div class="privacy-note"><span>⌁</span><p>This tasting is private and saved to your journal.</p></div>
+      </div>
+
+      <div class="step success-step" data-step="5">
+        <div class="success-orb" id="successOrb"><span>✓</span></div>
+        <p class="eyebrow">Tasting saved</p>
+        <h2 id="successTitle">A moment remembered.</h2>
+        <p class="step-help" id="successCopy">Your journal is already learning what you love.</p>
+        <div class="summary-card" id="summaryCard"></div>
+      </div>
+
+      <div class="dialog-actions">
+        <button type="button" class="secondary" id="prevStep">Back</button>
+        <button type="button" class="primary" id="nextStep">Continue <span>→</span></button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status"></div>
+  <script src="app.js"></script>
+</body>
+</html>
