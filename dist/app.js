@@ -4,7 +4,7 @@ const catalog = {
     suggestions: ['Worka Sakaro', 'El Paraíso', 'House espresso'],
     notes: ['Citrus', 'Stone fruit', 'Floral', 'Chocolate', 'Caramel', 'Nutty', 'Tea-like', 'Earthy'],
     detailTitle: 'How did you make it?',
-    details: [['Method', 'select', ['V60', 'Espresso', 'AeroPress', 'Other']], ['Dose', 'input', '15 g'], ['Water', 'input', '250 g'], ['Grind', 'input', 'Setting 18'], ['Temperature', 'input', '94°C'], ['Total time', 'input', '2:45']]
+    details: [['Method', 'select', ['V60', 'Espresso', 'AeroPress', 'Other']], ['Grinder', 'input', 'Timemore 078S'], ['Espresso machine', 'input', 'Not set'], ['Dose', 'input', '15 g'], ['Water', 'input', '250 g'], ['Grind', 'input', 'Setting 18'], ['Temperature', 'input', '199°F'], ['Total time', 'input', '2:45']]
   },
   wine: {
     kicker: 'Open a bottle, notice more', title: 'Meet the wine in front of you.', description: 'A few prompts. Your own point of view.',
@@ -33,6 +33,7 @@ const samples = [
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const dialog = $('#tastingDialog');
+const productDialog = $('#productDialog');
 
 function setCategory(category) {
   state.category = category;
@@ -84,15 +85,47 @@ function buildCategoryFields() {
   $('#noteCloud').innerHTML = item.notes.map(n => `<button type="button" class="note-chip" data-note="${n}">${n}</button>`).join('');
   $('#detailTitle').textContent = item.detailTitle;
   $('#detailPanel').innerHTML = item.details.map(([label, type, value]) => {
-    if (type === 'select') return `<div class="mini-field"><label>${label}</label><select>${value.map(v => `<option>${v}</option>`).join('')}</select></div>`;
-    return `<div class="mini-field"><label>${label}</label><input value="${value}"></div>`;
+    const field = label.toLowerCase().replace(/[^a-z]+/g, '-').replace(/-$/, '');
+    if (type === 'select') return `<div class="mini-field"><label>${label}</label><select data-detail="${field}">${value.map(v => `<option>${v}</option>`).join('')}</select></div>`;
+    return `<div class="mini-field"><label>${label}</label><input data-detail="${field}" value="${value}"></div>`;
   }).join('');
+  const existingGuidance = $('#ratioGuidance');
+  if (state.category === 'coffee') {
+    if (!existingGuidance) $('#detailPanel').insertAdjacentHTML('afterend', '<aside class="ratio-guidance" id="ratioGuidance"><span class="ratio-mark">↗</span><div><p class="eyebrow">Brew ratio</p><strong id="ratioValue">16.7:1</strong><p id="ratioCopy">A balanced V60 starting point is usually 15–17:1. You’re in range.</p></div></aside>');
+    updateRatioGuidance();
+    $('#detailPanel').querySelectorAll('[data-detail="dose"], [data-detail="water"], [data-detail="method"]').forEach(field => field.addEventListener('input', updateRatioGuidance));
+    $('#detailPanel').querySelector('[data-detail="method"]')?.addEventListener('change', updateRatioGuidance);
+  } else {
+    existingGuidance?.remove();
+  }
   $$('.suggestion').forEach(b => b.addEventListener('click', () => { $('#productName').value = b.textContent; }));
   $$('.note-chip').forEach(b => b.addEventListener('click', () => {
     b.classList.toggle('selected', !b.classList.contains('selected'));
     state.notes = $$('.note-chip.selected').map(n => n.dataset.note);
   }));
   $$('.note-chip').forEach(b => b.classList.toggle('selected', state.notes.includes(b.dataset.note)));
+}
+
+function numericValue(selector) { return Number.parseFloat($(selector)?.value?.replace(/[^0-9.]/g, '')); }
+
+function updateRatioGuidance() {
+  const dose = numericValue('[data-detail="dose"]');
+  const water = numericValue('[data-detail="water"]');
+  const method = $('[data-detail="method"]')?.value || 'V60';
+  const ratio = water / dose;
+  if (!Number.isFinite(ratio) || ratio <= 0) {
+    $('#ratioValue').textContent = '—';
+    $('#ratioCopy').textContent = 'Add a dose and water weight to see your brew ratio.';
+    return;
+  }
+  $('#ratioValue').textContent = `${ratio.toFixed(1)}:1`;
+  if (method === 'V60') {
+    $('#ratioCopy').textContent = ratio < 15 ? 'A little concentrated for a V60. A common starting range is 15–17:1.' : ratio > 17 ? 'A little more dilute for a V60. A common starting range is 15–17:1.' : 'A balanced V60 starting point is usually 15–17:1. You’re in range.';
+  } else if (method === 'Espresso') {
+    $('#ratioCopy').textContent = 'For espresso, compare dose to beverage yield instead—1:2 is a useful first test.';
+  } else {
+    $('#ratioCopy').textContent = 'This is a reference point, not a rule. Let the cup guide the next adjustment.';
+  }
 }
 
 function updateStep() {
@@ -147,10 +180,43 @@ function renderRecent() {
 
 function activeFilter() { return $('.filter.active')?.dataset.filter || 'all'; }
 
+function productKey(entry) { return `${entry.category}:${entry.name.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()}`; }
+
+function groupedProducts(filter = 'all') {
+  const grouped = new Map();
+  [...readTastings(), ...samples].forEach(entry => {
+    if (filter !== 'all' && entry.category !== filter) return;
+    const key = productKey(entry);
+    const product = grouped.get(key) || { key, category: entry.category, name: entry.name, tastings: [] };
+    product.tastings.push(entry);
+    grouped.set(key, product);
+  });
+  return [...grouped.values()];
+}
+
 function renderJournal(filter = 'all') {
-  const all = [...readTastings(), ...samples];
-  const entries = filter === 'all' ? all : all.filter(entry => entry.category === filter);
-  $('#journalGrid').innerHTML = entries.map(e => `<article class="journal-card"><div><span class="drink-dot ${e.category}-dot"></span><h3>${escapeHtml(e.name)}</h3><p>${e.notes?.length ? e.notes.map(escapeHtml).join(' · ') : 'A first impression, saved.'}</p></div><footer><span>${escapeHtml(e.reaction)}</span><span>${escapeHtml(e.date)}</span></footer></article>`).join('') || '<p class="empty-state">Nothing here yet. Your next tasting will find its place.</p>';
+  const products = groupedProducts(filter);
+  $('#journalGrid').innerHTML = products.map(product => {
+    const latest = product.tastings[0];
+    const count = product.tastings.length;
+    const notes = latest.notes?.length ? latest.notes.map(escapeHtml).join(' · ') : 'A first impression, saved.';
+    return `<button class="journal-card product-card" data-product-key="${escapeHtml(product.key)}"><div><span class="drink-dot ${product.category}-dot"></span><h3>${escapeHtml(product.name)}</h3><p>${notes}</p></div><footer><span>${count} tasting${count === 1 ? '' : 's'}</span><span>${escapeHtml(latest.date)}</span></footer></button>`;
+  }).join('') || '<p class="empty-state">Nothing here yet. Your next tasting will find its place.</p>';
+  $$('.product-card').forEach(card => card.addEventListener('click', () => openProduct(card.dataset.productKey)));
+}
+
+function openProduct(key) {
+  const product = groupedProducts().find(item => item.key === key);
+  if (!product) return;
+  const count = product.tastings.length;
+  const latest = product.tastings[0];
+  $('#productDot').className = `drink-dot ${product.category}-dot`;
+  $('#productCategory').textContent = capitalize(product.category);
+  $('#productDialogTitle').textContent = product.name;
+  $('#productSummary').textContent = count === 1 ? `One ${capitalize(product.category).toLowerCase()} tasting, ready to become a useful reference point.` : `${count} tastings across time. Notice what stays, and what changes.`;
+  $('#historyCount').textContent = `${count} tasting${count === 1 ? '' : 's'}`;
+  $('#historyList').innerHTML = product.tastings.map(entry => `<article class="history-entry"><div><strong>${escapeHtml(entry.reaction)}</strong><p>${entry.notes?.length ? entry.notes.map(escapeHtml).join(' · ') : 'A simple impression, saved.'}${entry.personalNote ? ` — ${escapeHtml(entry.personalNote)}` : ''}</p></div><time>${escapeHtml(entry.date)}</time></article>`).join('');
+  productDialog.showModal();
 }
 
 function readTastings() { return JSON.parse(localStorage.getItem(TASTINGS_KEY) || '[]'); }
@@ -176,6 +242,8 @@ $('#quickAdd').addEventListener('click', openTasting);
 $('#nextStep').addEventListener('click', nextStep);
 $('#prevStep').addEventListener('click', () => { if (state.step > 1) { state.step -= 1; updateStep(); } });
 $('#saveExit').addEventListener('click', () => { saveDraft(); showToast('Draft saved for later.'); dialog.close(); });
+$('#closeProduct').addEventListener('click', () => productDialog.close());
+$('#historyDone').addEventListener('click', () => productDialog.close());
 $$('.reactions button').forEach(b => b.addEventListener('click', () => { $$('.reactions button').forEach(x => x.classList.remove('selected')); b.classList.add('selected'); state.reaction = b.dataset.reaction; }));
 $$('[data-home]').forEach(b => b.addEventListener('click', () => showView('home')));
 $('#viewJournal').addEventListener('click', () => showView('journal'));

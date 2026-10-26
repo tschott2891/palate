@@ -158,6 +158,25 @@
     </form>
   </dialog>
 
+  <dialog id="productDialog" aria-labelledby="productDialogTitle">
+    <section class="product-dialog-shell">
+      <div class="dialog-top">
+        <button class="close-button" id="closeProduct" aria-label="Close product history">×</button>
+        <span class="step-count">Product history</span>
+        <span aria-hidden="true"></span>
+      </div>
+      <div class="product-hero" id="productHero">
+        <span class="drink-dot coffee-dot" id="productDot"></span>
+        <p class="eyebrow" id="productCategory">Coffee</p>
+        <h2 id="productDialogTitle">A product remembered.</h2>
+        <p id="productSummary">A few moments, held together.</p>
+      </div>
+      <div class="history-heading"><p class="eyebrow">Your tastings</p><span id="historyCount"></span></div>
+      <div class="history-list" id="historyList"></div>
+      <button class="secondary history-close" id="historyDone">Done</button>
+    </section>
+  </dialog>
+
   <div class="toast" id="toast" role="status"></div>
   <script src="app.js"></script>
 </body>
