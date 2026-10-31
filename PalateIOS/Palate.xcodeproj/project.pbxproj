@@ -1,0 +1,231 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 71;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A001 /* PalateApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A101 /* PalateApp.swift */; };
+		A002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A102 /* ContentView.swift */; };
+		A003 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = A103 /* Models.swift */; };
+		A004 /* PalateMark.png in Resources */ = {isa = PBXBuildFile; fileRef = A105 /* PalateMark.png */; };
+		A005 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A106 /* Assets.xcassets */; };
+		A006 /* LabelScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A107 /* LabelScanner.swift */; };
+		A007 /* GeographyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A108 /* GeographyView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A101 /* PalateApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalateApp.swift; sourceTree = "<group>"; };
+		A102 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A103 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		A104 /* Palate.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = Palate.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A105 /* PalateMark.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = PalateMark.png; sourceTree = "<group>"; };
+		A106 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A107 /* LabelScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabelScanner.swift; sourceTree = "<group>"; };
+		A108 /* GeographyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeographyView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A401 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A201 /* Palate */ = {
+			isa = PBXGroup;
+			children = (
+				A101 /* PalateApp.swift */,
+				A102 /* ContentView.swift */,
+				A103 /* Models.swift */,
+				A105 /* PalateMark.png */,
+				A106 /* Assets.xcassets */,
+				A107 /* LabelScanner.swift */,
+				A108 /* GeographyView.swift */,
+			);
+			path = Palate;
+			sourceTree = "<group>";
+		};
+		A202 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A104 /* Palate.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A203 = {
+			isa = PBXGroup;
+			children = (
+				A201 /* Palate */,
+				A202 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A501 /* Palate */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A701 /* Build configuration list for PBXNativeTarget "Palate" */;
+			buildPhases = (
+				A301 /* Sources */,
+				A401 /* Frameworks */,
+				A402 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Palate;
+			productName = Palate;
+			productReference = A104 /* Palate.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A601 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					A501 = {
+						CreatedOnToolsVersion = 27.1;
+					};
+				};
+			};
+			buildConfigurationList = A702 /* Build configuration list for PBXProject "Palate" */;
+			compatibilityVersion = "Xcode 16.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A203;
+			productRefGroup = A202 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A501 /* Palate */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A402 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A004 /* PalateMark.png in Resources */,
+				A005 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A301 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A001 /* PalateApp.swift in Sources */,
+				A002 /* ContentView.swift in Sources */,
+				A003 /* Models.swift in Sources */,
+				A006 /* LabelScanner.swift in Sources */,
+				A007 /* GeographyView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A801 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G386UTW4Q7;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.food-and-drink";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Palate uses the camera to capture product labels for on-device recognition.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Palate lets you choose product label photos for on-device recognition.";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tschott.Palate;
+				PRODUCT_NAME = Palate;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A802 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G386UTW4Q7;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.food-and-drink";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Palate uses the camera to capture product labels for on-device recognition.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Palate lets you choose product label photos for on-device recognition.";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tschott.Palate;
+				PRODUCT_NAME = Palate;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		A803 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+			};
+			name = Debug;
+		};
+		A804 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A701 /* Build configuration list for PBXNativeTarget "Palate" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A801 /* Debug */,
+				A802 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A702 /* Build configuration list for PBXProject "Palate" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A803 /* Debug */,
+				A804 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A601 /* Project object */;
+}
