@@ -6,6 +6,7 @@ import PhotosUI
 
 struct ContentView: View {
     @State private var selectedTab: RootTab = .home
+    @StateObject private var tastingHistory = TastingHistoryStore()
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -26,6 +27,7 @@ struct ContentView: View {
         .preferredColorScheme(.dark)
         .toolbarBackground(Color.space, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)
+        .environmentObject(tastingHistory)
     }
 }
 
@@ -296,6 +298,8 @@ private struct BrewSetupView: View {
                     }.groupBoxStyle(DarkGroupBox())
                 }
 
+                TastingHistoryCard(productID: bag.id, tint: Color.coffee)
+
                 Button { bag.lastDose = dose; bag.lastWater = water; bag.lastGrind = setting; go = true } label: {
                     HStack { Text(brewType == .v60 ? "Start guided brew" : "Continue to tasting"); Spacer(); Image(systemName: "arrow.right") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(Color.starlight, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.black)
                 }
@@ -403,12 +407,23 @@ private struct PourMotionGuide: View {
 
 private struct TasteView: View {
     let bag: CoffeeBag, dose, water: Double, grinder, setting: String
-    @State private var tags: Set<String> = []
-    @State private var note = ""
-    @State private var saved = false
     let choices = ["Sour", "Bitter", "Balanced", "Weak", "Strong", "Sweet", "Fruity", "Floral"]
-    var tip: (String, String) { if tags.contains("Sour") { return ("Try one notch finer", "Sourness can point to a shorter extraction. Move the grinder one small step finer and keep everything else still.") }; if tags.contains("Bitter") { return ("Try one notch coarser", "Open the grind one small step and keep your ratio stable.") }; return ("Keep this recipe close", "This is a useful reference point. Brew it once more before changing anything.") }
-    var body: some View { ScrollView { VStack(alignment: .leading, spacing: 22) { Text("TASTING NOTE").eyebrow(); Text("Log this cup").displayTitle(); Text("Select what stood out, then add a note if useful.").supportingText(); GroupBox("Flavor and balance") { FlowLayout(items: choices) { tag in Button(tag) { if tags.contains(tag) { tags.remove(tag) } else { tags.insert(tag) } }.padding(.horizontal, 13).padding(.vertical, 9).background(tags.contains(tag) ? Color.coffee : .white.opacity(0.07), in: Capsule()).foregroundStyle(tags.contains(tag) ? .black : .primary) }; TextField("Add an observation", text: $note, axis: .vertical).lineLimit(3...6).textFieldStyle(.roundedBorder).padding(.top, 16) }.groupBoxStyle(DarkGroupBox()); GroupBox("Roaster notes") { FlowLayout(items: bag.notes) { Text($0).padding(9).overlay(Capsule().stroke(.purple.opacity(0.55))) } }.groupBoxStyle(DarkGroupBox()); Button("Save tasting") { saved = true }.buttonStyle(.borderedProminent).controlSize(.large).frame(maxWidth: .infinity) }.padding(20) }.background(Color.space).navigationDestination(isPresented: $saved) { RecommendationView(title: tip.0, copy: tip.1, bag: bag) }.preferredColorScheme(.dark) }
+    var body: some View {
+        GuidedTastingLog(
+            category: .coffee,
+            productID: bag.id,
+            product: bag.name,
+            producer: bag.roaster,
+            title: "Log this cup",
+            eyebrow: "COFFEE / TASTING NOTE",
+            choices: choices,
+            tint: Color.coffee,
+            contextPrompt: "How did you brew it?",
+            initialContext: "\(Int(dose))g coffee · \(Int(water))g water · \(grinder) \(setting)",
+            savedMessage: "Saved to your coffee history.",
+            destination: AnyView(CoffeeShelfView())
+        )
+    }
 }
 
 private struct RecommendationView: View { let title, copy: String; let bag: CoffeeBag; var body: some View { VStack(alignment: .leading, spacing: 22) { Spacer(); HStack(spacing: 16) { Image("PalateMark").resizable().scaledToFit().frame(width: 46, height: 46); Image(systemName: "checkmark").font(.title2).foregroundStyle(Color.sage).frame(width: 46, height: 46).overlay(Circle().stroke(Color.sage)) }; Text("BREW SAVED").eyebrow(); Text("Tasting recorded").displayTitle(); Text(bag.name).supportingText(); VStack(alignment: .leading, spacing: 10) { Text("NEXT BREW").eyebrow(); Text(title).font(.title2).fontDesign(.serif); Text(copy).supportingText() }.padding(20).background(Color.coffee.opacity(0.1), in: RoundedRectangle(cornerRadius: 18)); Spacer(); NavigationLink { CoffeeShelfView() } label: { HStack { Text("Back to coffee"); Spacer(); Image(systemName: "arrow.right") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(Color.starlight, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.black) } }.padding(24).background(Color.space).preferredColorScheme(.dark).navigationBarBackButtonHidden() } }
@@ -565,14 +580,16 @@ private struct WineDetailView: View {
     @State private var showTaste = false
     @State private var showEdit = false
     init(bottle: Binding<WineBottle>) { _bottle = bottle; let value = bottle.wrappedValue; _mapPosition = State(initialValue: .region(MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: value.latitude, longitude: value.longitude), span: MKCoordinateSpan(latitudeDelta: 9, longitudeDelta: 9)))) }
-    var body: some View { ScrollView { VStack(alignment: .leading, spacing: 22) { Text("WINE / BOTTLE").eyebrow().foregroundStyle(Color.wine); Text(bottle.name).displayTitle(); Text("\(bottle.producer) · \(bottle.vintage)").supportingText(); provenanceMap(title: bottle.region, subtitle: "\(bottle.country) · Explore origin", tint: Color.wine); GroupBox("Details") { DetailGrid(items: [("GRAPE", bottle.grapes), ("REGION", bottle.region), ("VINTAGE", bottle.vintage)]) }.groupBoxStyle(DarkGroupBox()); GroupBox("Producer notes") { FlowLayout(items: bottle.notes) { Text($0).padding(9).background(Color.wine.opacity(0.13), in: Capsule()) } }.groupBoxStyle(DarkGroupBox()); Button { showTaste = true } label: { HStack { Text("Log tasting"); Spacer(); Image(systemName: "wineglass.fill") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(Color.wine, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.black) } }.padding(20) }.background(Color.space).navigationDestination(isPresented: $showTaste) { WineTastingView(bottle: bottle) }.toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Edit") { showEdit = true } } }.sheet(isPresented: $showEdit) { EditWineView(bottle: $bottle) }.preferredColorScheme(.dark) }
+    var body: some View { ScrollView { VStack(alignment: .leading, spacing: 22) { Text("WINE / BOTTLE").eyebrow().foregroundStyle(Color.wine); Text(bottle.name).displayTitle(); Text("\(bottle.producer) · \(bottle.vintage)").supportingText(); provenanceMap(title: bottle.region, subtitle: "\(bottle.country) · Explore origin", tint: Color.wine); GroupBox("Details") { DetailGrid(items: [("GRAPE", bottle.grapes), ("REGION", bottle.region), ("VINTAGE", bottle.vintage)]) }.groupBoxStyle(DarkGroupBox()); GroupBox("Producer notes") { FlowLayout(items: bottle.notes) { Text($0).padding(9).background(Color.wine.opacity(0.13), in: Capsule()) } }.groupBoxStyle(DarkGroupBox()); TastingHistoryCard(productID: bottle.id, tint: Color.wine); Button { showTaste = true } label: { HStack { Text("Log tasting"); Spacer(); Image(systemName: "wineglass.fill") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(Color.wine, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.black) } }.padding(20) }.background(Color.space).navigationDestination(isPresented: $showTaste) { WineTastingView(bottle: bottle) }.toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Edit") { showEdit = true } } }.sheet(isPresented: $showEdit) { EditWineView(bottle: $bottle) }.preferredColorScheme(.dark) }
     @ViewBuilder private func provenanceMap(title: String, subtitle: String, tint: Color) -> some View { VStack(alignment: .leading, spacing: 0) { Map(position: $mapPosition) { Marker(title, coordinate: CLLocationCoordinate2D(latitude: bottle.latitude, longitude: bottle.longitude)).tint(tint) }.frame(height: 210).clipShape(RoundedRectangle(cornerRadius: 18)); VStack(alignment: .leading, spacing: 3) { Text("ORIGIN").eyebrow().foregroundStyle(tint); Text(title).font(.title3.weight(.medium)); Text(subtitle).font(.caption).foregroundStyle(.secondary) }.padding(15) }.background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18)) }
 }
 
 private struct WineTastingView: View {
-    let bottle: WineBottle; @State private var selected: Set<String> = []; @State private var note = ""; @State private var saved = false
+    let bottle: WineBottle
     let choices = ["Light", "Structured", "Fresh", "Earthy", "Fruit-forward", "Silky", "Tannic", "Long finish"]
-    var body: some View { TastingLog(title: "Log this pour", eyebrow: "WINE / TASTING NOTE", choices: choices, selected: $selected, note: $note, tint: Color.wine, prompt: "Add context or a food pairing") { saved = true }.navigationDestination(isPresented: $saved) { TastingSavedView(product: bottle.name, message: "Saved to your cellar.", tint: Color.wine, destination: AnyView(WineShelfView())) } }
+    var body: some View {
+        GuidedTastingLog(category: .wine, productID: bottle.id, product: bottle.name, producer: bottle.producer, title: "Log this pour", eyebrow: "WINE / TASTING NOTE", choices: choices, tint: Color.wine, contextPrompt: "Where or with what are you tasting?", initialContext: "", savedMessage: "Saved to your cellar history.", destination: AnyView(WineShelfView()))
+    }
 }
 
 // MARK: - Scotch
@@ -589,10 +606,16 @@ private struct ScotchCard: View { let bottle: ScotchBottle; var body: some View 
 private struct ScotchDetailView: View {
     @Binding var bottle: ScotchBottle; @State private var mapPosition: MapCameraPosition; @State private var showTaste = false; @State private var showEdit = false
     init(bottle: Binding<ScotchBottle>) { _bottle = bottle; let value = bottle.wrappedValue; _mapPosition = State(initialValue: .region(MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: value.latitude, longitude: value.longitude), span: MKCoordinateSpan(latitudeDelta: 4, longitudeDelta: 4)))) }
-    var body: some View { ScrollView { VStack(alignment: .leading, spacing: 22) { Text("SCOTCH / BOTTLE").eyebrow().foregroundStyle(Color.scotch); Text(bottle.name).displayTitle(); Text("\(bottle.distillery) · \(bottle.ageStatement) · \(bottle.abv)").supportingText(); VStack(alignment: .leading, spacing: 0) { Map(position: $mapPosition) { Marker(bottle.region, coordinate: CLLocationCoordinate2D(latitude: bottle.latitude, longitude: bottle.longitude)).tint(Color.scotch) }.frame(height: 210).clipShape(RoundedRectangle(cornerRadius: 18)); VStack(alignment: .leading, spacing: 3) { Text("DISTILLERY ORIGIN").eyebrow().foregroundStyle(Color.scotch); Text(bottle.region).font(.title3.weight(.medium)); Text("Scotland · Explore origin").font(.caption).foregroundStyle(.secondary) }.padding(15) }.background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18)); GroupBox("Details") { DetailGrid(items: [("CASK", bottle.cask), ("REGION", bottle.region), ("STRENGTH", bottle.abv)]) }.groupBoxStyle(DarkGroupBox()); GroupBox("Distillery notes") { FlowLayout(items: bottle.notes) { Text($0).padding(9).background(Color.scotch.opacity(0.13), in: Capsule()) } }.groupBoxStyle(DarkGroupBox()); Button { showTaste = true } label: { HStack { Text("Log tasting"); Spacer(); Image(systemName: "flame.fill") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(Color.scotch, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.black) } }.padding(20) }.background(Color.space).navigationDestination(isPresented: $showTaste) { ScotchTastingView(bottle: bottle) }.toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Edit") { showEdit = true } } }.sheet(isPresented: $showEdit) { EditScotchView(bottle: $bottle) }.preferredColorScheme(.dark) }
+    var body: some View { ScrollView { VStack(alignment: .leading, spacing: 22) { Text("SCOTCH / BOTTLE").eyebrow().foregroundStyle(Color.scotch); Text(bottle.name).displayTitle(); Text("\(bottle.distillery) · \(bottle.ageStatement) · \(bottle.abv)").supportingText(); VStack(alignment: .leading, spacing: 0) { Map(position: $mapPosition) { Marker(bottle.region, coordinate: CLLocationCoordinate2D(latitude: bottle.latitude, longitude: bottle.longitude)).tint(Color.scotch) }.frame(height: 210).clipShape(RoundedRectangle(cornerRadius: 18)); VStack(alignment: .leading, spacing: 3) { Text("DISTILLERY ORIGIN").eyebrow().foregroundStyle(Color.scotch); Text(bottle.region).font(.title3.weight(.medium)); Text("Scotland · Explore origin").font(.caption).foregroundStyle(.secondary) }.padding(15) }.background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18)); GroupBox("Details") { DetailGrid(items: [("CASK", bottle.cask), ("REGION", bottle.region), ("STRENGTH", bottle.abv)]) }.groupBoxStyle(DarkGroupBox()); GroupBox("Distillery notes") { FlowLayout(items: bottle.notes) { Text($0).padding(9).background(Color.scotch.opacity(0.13), in: Capsule()) } }.groupBoxStyle(DarkGroupBox()); TastingHistoryCard(productID: bottle.id, tint: Color.scotch); Button { showTaste = true } label: { HStack { Text("Log tasting"); Spacer(); Image(systemName: "flame.fill") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(Color.scotch, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.black) } }.padding(20) }.background(Color.space).navigationDestination(isPresented: $showTaste) { ScotchTastingView(bottle: bottle) }.toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Edit") { showEdit = true } } }.sheet(isPresented: $showEdit) { EditScotchView(bottle: $bottle) }.preferredColorScheme(.dark) }
 }
 
-private struct ScotchTastingView: View { let bottle: ScotchBottle; @State private var selected: Set<String> = []; @State private var note = ""; @State private var saved = false; let choices = ["Honeyed", "Sherried", "Smoky", "Maritime", "Oily", "Spiced", "Dry", "Long finish"]; var body: some View { TastingLog(title: "Log this dram", eyebrow: "SCOTCH / TASTING NOTE", choices: choices, selected: $selected, note: $note, tint: Color.scotch, prompt: "Neat, with water, or another observation") { saved = true }.navigationDestination(isPresented: $saved) { TastingSavedView(product: bottle.name, message: "Saved to your cabinet.", tint: Color.scotch, destination: AnyView(ScotchShelfView())) } } }
+private struct ScotchTastingView: View {
+    let bottle: ScotchBottle
+    let choices = ["Honeyed", "Sherried", "Smoky", "Maritime", "Oily", "Spiced", "Dry", "Long finish"]
+    var body: some View {
+        GuidedTastingLog(category: .scotch, productID: bottle.id, product: bottle.name, producer: bottle.distillery, title: "Log this dram", eyebrow: "SCOTCH / TASTING NOTE", choices: choices, tint: Color.scotch, contextPrompt: "How are you drinking it?", initialContext: "Neat", savedMessage: "Saved to your cabinet history.", destination: AnyView(ScotchShelfView()))
+    }
+}
 
 // MARK: - Shared tasting UI
 
@@ -601,9 +624,130 @@ private struct ModuleHeader: View { let kicker, title, detail, symbol: String; l
 private struct InsightCard: View { let title, detail, icon: String; let tint: Color; var body: some View { HStack(alignment: .top, spacing: 14) { Image(systemName: icon).foregroundStyle(tint).frame(width: 22, height: 22).background(tint.opacity(0.13), in: Circle()); VStack(alignment: .leading, spacing: 5) { Text(title).eyebrow().foregroundStyle(tint); Text(detail).font(.subheadline).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true) } }.padding(17).background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18)).overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.08))) } }
 private struct DetailGrid: View { let items: [(String, String)]; var body: some View { LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 15) { ForEach(items, id: \.0) { item in VStack(alignment: .leading, spacing: 4) { Text(item.0).eyebrow(); Text(item.1).font(.subheadline).fixedSize(horizontal: false, vertical: true) }.frame(maxWidth: .infinity, alignment: .leading) } } } }
 
-private struct TastingLog: View {
-    let title, eyebrow: String; let choices: [String]; @Binding var selected: Set<String>; @Binding var note: String; let tint: Color; let prompt: String; let save: () -> Void
-    var body: some View { ScrollView { VStack(alignment: .leading, spacing: 22) { Text(eyebrow).eyebrow().foregroundStyle(tint); Text(title).displayTitle(); Text("Select descriptors that apply. Add a note when it helps you compare future tastings.").supportingText(); GroupBox("Descriptors") { FlowLayout(items: choices) { choice in Button(choice) { if selected.contains(choice) { selected.remove(choice) } else { selected.insert(choice) } }.padding(.horizontal, 13).padding(.vertical, 9).background(selected.contains(choice) ? tint : .white.opacity(0.07), in: Capsule()).foregroundStyle(selected.contains(choice) ? .black : .primary) }; TextField(prompt, text: $note, axis: .vertical).lineLimit(3...6).textFieldStyle(.roundedBorder).padding(.top, 16) }.groupBoxStyle(DarkGroupBox()); GroupBox("Tasting method") { HStack(spacing: 14) { Image(systemName: "drop").foregroundStyle(tint); Text("Record whether this was neat, with water, or paired with food in the note above.").font(.subheadline).foregroundStyle(.secondary) } }.groupBoxStyle(DarkGroupBox()); Button(action: save) { HStack { Text("Save tasting"); Spacer(); Image(systemName: "checkmark") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(tint, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.black) } }.padding(20) }.background(Color.space).preferredColorScheme(.dark) }
+private struct GuidedTastingLog: View {
+    @EnvironmentObject private var history: TastingHistoryStore
+    let category: TastingCategory
+    let productID: UUID
+    let product, producer, title, eyebrow: String
+    let choices: [String]
+    let tint: Color
+    let contextPrompt, initialContext, savedMessage: String
+    let destination: AnyView
+
+    @State private var step = 0
+    @State private var context = ""
+    @State private var selected: Set<String> = []
+    @State private var rating = 0
+    @State private var note = ""
+    @State private var saved = false
+
+    private var stepTitle: String { ["Set the scene", "What stood out?", "Make it memorable"][step] }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                Text(eyebrow).eyebrow().foregroundStyle(tint)
+                Text(title).displayTitle()
+                HStack(spacing: 6) {
+                    ForEach(0..<3, id: \.self) { index in
+                        Capsule().fill(index <= step ? tint : .white.opacity(0.13)).frame(height: 4)
+                    }
+                }
+                Text("STEP \(step + 1) OF 3 · \(stepTitle.uppercased())").eyebrow().foregroundStyle(tint)
+
+                GroupBox(stepTitle) {
+                    if step == 0 {
+                        Text("A little context makes this tasting easier to revisit later.").supportingText()
+                        TextField(contextPrompt, text: $context, axis: .vertical)
+                            .lineLimit(2...4)
+                            .textFieldStyle(.roundedBorder)
+                    } else if step == 1 {
+                        Text("Choose every descriptor that feels true. There is no required number.").supportingText()
+                        FlowLayout(items: choices) { choice in
+                            Button(choice) { toggle(choice) }
+                                .padding(.horizontal, 13).padding(.vertical, 9)
+                                .background(selected.contains(choice) ? tint : .white.opacity(0.07), in: Capsule())
+                                .foregroundStyle(selected.contains(choice) ? .black : .primary)
+                        }
+                    } else {
+                        Text("How much would you want to return to this? Add a thought for your future self.").supportingText()
+                        HStack(spacing: 8) {
+                            ForEach(1...5, id: \.self) { value in
+                                Button { rating = value } label: {
+                                    Image(systemName: value <= rating ? "star.fill" : "star")
+                                        .font(.title2).foregroundStyle(value <= rating ? tint : .secondary)
+                                }.accessibilityLabel("\(value) star rating")
+                            }
+                        }.padding(.vertical, 4)
+                        TextField("A detail worth remembering", text: $note, axis: .vertical)
+                            .lineLimit(3...6).textFieldStyle(.roundedBorder)
+                    }
+                }
+                .groupBoxStyle(DarkGroupBox())
+
+                Button { advance() } label: {
+                    HStack { Text(step == 2 ? "Save tasting" : "Continue"); Spacer(); Image(systemName: step == 2 ? "checkmark" : "arrow.right") }
+                        .fontWeight(.bold).padding().frame(maxWidth: .infinity)
+                        .background(tint, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.black)
+                }
+            }
+            .padding(20)
+        }
+        .background(Color.space)
+        .onAppear { if context.isEmpty { context = initialContext } }
+        .navigationDestination(isPresented: $saved) {
+            TastingSavedView(product: product, message: savedMessage, tint: tint, destination: destination)
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func toggle(_ choice: String) {
+        if selected.contains(choice) { selected.remove(choice) } else { selected.insert(choice) }
+    }
+
+    private func advance() {
+        guard step < 2 else {
+            history.add(TastingRecord(category: category, productID: productID, productName: product, producerName: producer, context: context, descriptors: selected.sorted(), rating: rating, note: note))
+            saved = true
+            return
+        }
+        withAnimation { step += 1 }
+    }
+}
+
+private struct TastingHistoryCard: View {
+    @EnvironmentObject private var history: TastingHistoryStore
+    let productID: UUID
+    let tint: Color
+
+    private var records: [TastingRecord] { history.records(for: productID) }
+
+    var body: some View {
+        GroupBox("Tasting history") {
+            if records.isEmpty {
+                Label("Your saved tastings will appear here.", systemImage: "clock")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(records.prefix(3)) { record in
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack {
+                                Text(record.date.formatted(date: .abbreviated, time: .omitted)).font(.caption.weight(.semibold))
+                                Spacer()
+                                if record.rating > 0 { Text(String(repeating: "★", count: record.rating)).font(.caption).foregroundStyle(tint) }
+                            }
+                            if !record.descriptors.isEmpty { Text(record.descriptors.joined(separator: " · ")).font(.subheadline.weight(.medium)) }
+                            if !record.context.isEmpty { Text(record.context).font(.caption).foregroundStyle(.secondary) }
+                            if record.hasNote { Text(record.note).font(.caption).foregroundStyle(.secondary).italic() }
+                        }
+                        if record.id != records.prefix(3).last?.id { Divider().overlay(.white.opacity(0.12)) }
+                    }
+                    if records.count > 3 { Text("\(records.count - 3) earlier tastings saved").font(.caption).foregroundStyle(.secondary) }
+                }
+            }
+        }
+        .groupBoxStyle(DarkGroupBox())
+    }
 }
 
 private struct TastingSavedView: View { let product, message: String; let tint: Color; let destination: AnyView; var body: some View { VStack(alignment: .leading, spacing: 22) { Spacer(); Image(systemName: "checkmark").font(.title2).foregroundStyle(tint).frame(width: 48, height: 48).overlay(Circle().stroke(tint)); Text("TASTING SAVED").eyebrow().foregroundStyle(tint); Text("\(product),\nremembered.").displayTitle(); Text(message).serifMuted(); Spacer(); NavigationLink { destination } label: { HStack { Text("Back to your collection"); Spacer(); Image(systemName: "arrow.right") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(tint, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.black) } }.padding(24).background(Color.space).preferredColorScheme(.dark).navigationBarBackButtonHidden() } }

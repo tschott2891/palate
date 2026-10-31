@@ -1,4 +1,56 @@
 import Foundation
+import Combine
+
+enum TastingCategory: String, Codable, CaseIterable, Identifiable {
+    case coffee, wine, scotch
+
+    var id: String { rawValue }
+    var label: String { rawValue.capitalized }
+}
+
+/// A snapshot of a tasting, kept separately from collection metadata so old notes
+/// still make sense if a bottle or bag is later edited or removed.
+struct TastingRecord: Identifiable, Codable, Hashable {
+    var id: UUID = UUID()
+    var category: TastingCategory
+    var productID: UUID
+    var productName: String
+    var producerName: String
+    var date: Date = .now
+    var context: String
+    var descriptors: [String]
+    var rating: Int
+    var note: String
+
+    var hasNote: Bool { !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+}
+
+@MainActor
+final class TastingHistoryStore: ObservableObject {
+    @Published private(set) var records: [TastingRecord] = []
+
+    private let storageKey = "tastingHistory.v1"
+
+    init(defaults: UserDefaults = .standard) {
+        guard let data = defaults.data(forKey: storageKey),
+              let decoded = try? JSONDecoder().decode([TastingRecord].self, from: data) else { return }
+        records = decoded.sorted { $0.date > $1.date }
+    }
+
+    func add(_ record: TastingRecord) {
+        records.insert(record, at: 0)
+        persist()
+    }
+
+    func records(for productID: UUID) -> [TastingRecord] {
+        records.filter { $0.productID == productID }.sorted { $0.date > $1.date }
+    }
+
+    private func persist() {
+        guard let data = try? JSONEncoder().encode(records) else { return }
+        UserDefaults.standard.set(data, forKey: storageKey)
+    }
+}
 
 struct CoffeeBag: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
