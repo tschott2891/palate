@@ -334,9 +334,8 @@ private struct GuidedBrewView: View {
     let bag: CoffeeBag, recipe: V60Recipe, dose: Double, water: Double, grinder, setting: String
     @State private var stage = 0
     @State private var seconds = 0
+    @State private var totalSeconds = 0
     @State private var running = true
-    @State private var drawdownStarted = false
-    @State private var drawdownSeconds = 0
     @State private var goTaste = false
     @State private var timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     var current: BrewStage { recipe.stages[min(stage, recipe.stages.count - 1)] }
@@ -348,7 +347,7 @@ private struct GuidedBrewView: View {
                 Circle().fill(Color.coffee.opacity(0.09)).frame(width: 270, height: 270)
                 VStack(spacing: 8) {
                     Text(current.name.uppercased()).eyebrow()
-                    Text(time(current.seconds - seconds)).font(.system(size: 58, weight: .regular, design: .serif)).monospacedDigit()
+                    Text(time(isDrawdown ? totalSeconds : current.seconds - seconds)).font(.system(size: 58, weight: .regular, design: .serif)).monospacedDigit()
                     Text(current.instruction).fontDesign(.serif).foregroundStyle(.secondary).multilineTextAlignment(.center).lineLimit(2).padding(.horizontal, 34)
                     if PourMotionGuide.supports(current.technique) {
                         PourMotionGuide(technique: current.technique)
@@ -359,16 +358,15 @@ private struct GuidedBrewView: View {
                 }
             }
             .overlay(alignment: .top) { Image(systemName: "drop.fill").foregroundStyle(Color.sage).offset(y: -11) }
-            HStack { Stat(title: "Elapsed", value: time(recipe.stages.prefix(stage).reduce(0) { $0 + $1.seconds } + seconds)); Stat(title: "Target", value: "\(current.weight) g"); Stat(title: "Method", value: current.technique) }
+            HStack { Stat(title: "Total brew", value: time(totalSeconds)); Stat(title: "Target", value: "\(current.weight) g"); Stat(title: "Method", value: current.technique) }
             if isDrawdown {
                 VStack(spacing: 10) {
-                    Text("Start when the final pour finishes. Stop the timer when the bed is dry; you can edit this in the tasting log.").font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    Button(drawdownStarted ? (running ? "Stop drawdown" : "Save drawdown") : "Start drawdown") {
-                        if !drawdownStarted { drawdownStarted = true; running = true }
-                        else if running { running = false; drawdownSeconds = seconds }
-                        else { goTaste = true }
+                    Text("The timer includes every brew stage. Stop when the bed is dry; you can correct the total in the tasting log.").font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    Button("Stop brew") {
+                        running = false
+                        goTaste = true
                     }
-                    .buttonStyle(.borderedProminent).tint(drawdownStarted && running ? .red : Color.coffee).controlSize(.large)
+                    .buttonStyle(.borderedProminent).tint(.red).controlSize(.large)
                 }
             } else {
                 HStack { Button("Skip step") { advance() }.buttonStyle(.bordered); Button(running ? "Pause" : "Resume") { running.toggle() }.buttonStyle(.borderedProminent) }.controlSize(.large)
@@ -377,12 +375,17 @@ private struct GuidedBrewView: View {
         }
         .padding(24)
         .background(Color.space)
-        .onReceive(timer) { _ in guard running else { return }; seconds += 1; if !isDrawdown && seconds >= current.seconds { advance() } }
-        .navigationDestination(isPresented: $goTaste) { TasteView(bag: bag, dose: dose, water: water, grinder: grinder, setting: setting, timingLabel: "Drawdown", timingSeconds: drawdownSeconds) }
+        .onReceive(timer) { _ in
+            guard running else { return }
+            totalSeconds += 1
+            seconds += 1
+            if !isDrawdown && seconds >= current.seconds { advance() }
+        }
+        .navigationDestination(isPresented: $goTaste) { TasteView(bag: bag, dose: dose, water: water, grinder: grinder, setting: setting, timingLabel: "Total brew", timingSeconds: totalSeconds) }
         .preferredColorScheme(.dark)
     }
     var isDrawdown: Bool { current.name.localizedCaseInsensitiveContains("drawdown") }
-    func advance() { UINotificationFeedbackGenerator().notificationOccurred(.success); seconds = 0; stage += 1; if stage >= recipe.stages.count { running = false; goTaste = true } else if isDrawdown { running = false } }
+    func advance() { UINotificationFeedbackGenerator().notificationOccurred(.success); seconds = 0; stage += 1; if stage >= recipe.stages.count { running = false; goTaste = true } }
     func time(_ n: Int) -> String { String(format: "%d:%02d", max(0,n)/60, max(0,n)%60) }
 }
 
