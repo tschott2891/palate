@@ -38,6 +38,7 @@ struct LabelScanControl: View {
     let apply: (LabelScanResult) -> Void
 
     @State private var showCamera = false
+    @State private var showPhotoPicker = false
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var result: LabelScanResult?
     @State private var isScanning = false
@@ -45,17 +46,27 @@ struct LabelScanControl: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Menu {
-                Button { showCamera = true } label: { Label("Take photo", systemImage: "camera") }
-                PhotosPicker(selection: $selectedPhoto, matching: .images) { Label("Choose from library", systemImage: "photo.on.rectangle") }
-            } label: {
-                HStack {
-                    Label(isScanning ? "Reading label…" : "Scan label", systemImage: "camera.viewfinder")
-                    Spacer()
-                    if isScanning { ProgressView() } else { Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(.secondary) }
+            HStack(spacing: 12) {
+                Button { showCamera = true } label: {
+                    Label("Take photo", systemImage: "camera")
+                        .frame(maxWidth: .infinity)
                 }
+                .buttonStyle(.bordered)
+
+                Button { showPhotoPicker = true } label: {
+                    Label("Choose from library", systemImage: "photo.on.rectangle")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
             }
             .disabled(isScanning)
+
+            if isScanning {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Reading label…").font(.caption).foregroundStyle(.secondary)
+                }
+            }
 
             if let imageData {
                 HStack(spacing: 12) {
@@ -75,16 +86,18 @@ struct LabelScanControl: View {
             }
             .ignoresSafeArea()
         }
+        .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhoto, matching: .images)
         .onChange(of: selectedPhoto) { _, item in
             Task {
                 guard let data = try? await item?.loadTransferable(type: Data.self), let image = UIImage(data: data) else { return }
                 process(image)
+                await MainActor.run { selectedPhoto = nil }
             }
         }
         .sheet(item: $result) { scan in
-            LabelScanReview(result: scan) {
-                imageData = scan.imageData
-                apply(scan)
+            LabelScanReview(result: scan, kind: kind) { reviewedScan in
+                imageData = reviewedScan.imageData
+                apply(reviewedScan)
                 result = nil
             } retry: {
                 result = nil
@@ -112,8 +125,16 @@ struct LabelScanControl: View {
 private struct LabelScanReview: View {
     @Environment(\.dismiss) private var dismiss
     let result: LabelScanResult
-    let apply: () -> Void
+    let kind: LabelKind
+    let apply: (LabelScanResult) -> Void
     let retry: () -> Void
+    @State private var enriched: [PalateLabelEnrichment.Field] = []
+    @State private var isEnhancing = false
+    @State private var enhancementError: String?
+
+    private var displayedFields: [(label: String, value: String)] {
+        enriched.isEmpty ? result.fields : enriched.map { ($0.label, $0.value) }
+    }
 
     var body: some View {
         NavigationStack {
@@ -128,11 +149,12 @@ private struct LabelScanReview: View {
                     }
                 }
                 Section("Suggested fields") {
-                    if result.fields.isEmpty {
+                    if displayedFields.isEmpty {
                         Text("No structured details were detected. Retake the photo straight-on in brighter light.").foregroundStyle(.secondary)
                     } else {
-                        ForEach(Array(result.fields.enumerated()), id: \.offset) { _, field in
+                        ForEach(Array(displayedFields.enumerated()), id: \.offset) { index, field in
                             LabeledContent(field.label, value: field.value)
+                            if !enriched.isEmpty, enriched.indices.contains(index) { Text("\(enriched[index].confidence)% confidence · \(enriched[index].basis)").font(.caption2).foregroundStyle(.secondary) }
                         }
                     }
                 }
@@ -146,11 +168,36 @@ private struct LabelScanReview: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Apply") { apply() }.disabled(result.fields.isEmpty) }
+                ToolbarItem(placement: .confirmationAction) { Button("Apply") { apply(LabelScanResult(imageData: result.imageData, fields: displayedFields, recognizedLines: result.recognizedLines)) }.disabled(displayedFields.isEmpty) }
                 ToolbarItem(placement: .bottomBar) { Button("Retake photo") { retry() } }
+            }
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: 6) {
+                    Button { Task { await enhance() } } label: {
+                        HStack { Label(isEnhancing ? "Enhancing label…" : "Enhance with Palate", systemImage: "sparkles"); Spacer(); if isEnhancing { ProgressView() } }
+                    }
+                    .buttonStyle(.borderedProminent).disabled(isEnhancing)
+                    Text("Uses the label image and detected text to suggest details. Review before applying.").font(.caption2).foregroundStyle(.secondary)
+                    if let enhancementError { Text(enhancementError).font(.caption2).foregroundStyle(.red) }
+                }
+                .padding().background(.ultraThinMaterial)
             }
         }
         .preferredColorScheme(.dark)
+    }
+
+    private func enhance() async {
+        isEnhancing = true; enhancementError = nil
+        do {
+            let category: TastingCategory
+            switch kind {
+            case .coffee: category = .coffee
+            case .wine: category = .wine
+            case .scotch: category = .scotch
+            }
+            enriched = try await PalateLabelEnrichmentService.enrich(category: category, recognizedLines: result.recognizedLines, imageData: result.imageData).fields
+        } catch { enhancementError = error.localizedDescription }
+        isEnhancing = false
     }
 }
 

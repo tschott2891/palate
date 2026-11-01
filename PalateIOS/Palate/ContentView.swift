@@ -203,6 +203,7 @@ private struct CoffeeCard: View {
 }
 
 private struct BrewSetupView: View {
+    @EnvironmentObject private var history: TastingHistoryStore
     @Binding var bag: CoffeeBag
     @State private var brewType: BrewType = .v60
     @State private var recipe: V60Recipe = .hoffmann
@@ -300,6 +301,12 @@ private struct BrewSetupView: View {
 
                 TastingHistoryCard(productID: bag.id, tint: Color.coffee)
 
+                NavigationLink { PalateProfileView(request: .coffee(bag, records: history.records(for: bag.id)), tint: Color.coffee) } label: {
+                    HStack { Label("Ask Palate", systemImage: "sparkles"); Spacer(); Image(systemName: "arrow.right") }
+                        .fontWeight(.bold).padding().frame(maxWidth: .infinity)
+                        .background(Color.coffee.opacity(0.17), in: RoundedRectangle(cornerRadius: 14))
+                }
+
                 Button { bag.lastDose = dose; bag.lastWater = water; bag.lastGrind = setting; go = true } label: {
                     HStack { Text(brewType == .v60 ? "Start guided brew" : "Continue to tasting"); Spacer(); Image(systemName: "arrow.right") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(Color.starlight, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.black)
                 }
@@ -314,6 +321,7 @@ private struct BrewSetupView: View {
         }
         .navigationDestination(isPresented: $go) {
             if brewType == .v60 { GuidedBrewView(bag: bag, recipe: recipe, dose: dose, water: water, grinder: grinder.rawValue, setting: setting) }
+            else if brewType == .espresso { EspressoTimerView(bag: bag, dose: dose, yield: water, grinder: grinder.rawValue, setting: setting, suggestedShotTime: Int(shotTime)) }
             else { TasteView(bag: bag, dose: dose, water: water, grinder: grinder.rawValue, setting: setting) }
         }
         .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Edit") { showEdit = true } } }
@@ -327,6 +335,8 @@ private struct GuidedBrewView: View {
     @State private var stage = 0
     @State private var seconds = 0
     @State private var running = true
+    @State private var drawdownStarted = false
+    @State private var drawdownSeconds = 0
     @State private var goTaste = false
     @State private var timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     var current: BrewStage { recipe.stages[min(stage, recipe.stages.count - 1)] }
@@ -350,16 +360,29 @@ private struct GuidedBrewView: View {
             }
             .overlay(alignment: .top) { Image(systemName: "drop.fill").foregroundStyle(Color.sage).offset(y: -11) }
             HStack { Stat(title: "Elapsed", value: time(recipe.stages.prefix(stage).reduce(0) { $0 + $1.seconds } + seconds)); Stat(title: "Target", value: "\(current.weight) g"); Stat(title: "Method", value: current.technique) }
-            HStack { Button("Skip step") { advance() }.buttonStyle(.bordered); Button(running ? "Pause" : "Resume") { running.toggle() }.buttonStyle(.borderedProminent) }.controlSize(.large)
+            if isDrawdown {
+                VStack(spacing: 10) {
+                    Text("Start when the final pour finishes. Stop the timer when the bed is dry; you can edit this in the tasting log.").font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    Button(drawdownStarted ? (running ? "Stop drawdown" : "Save drawdown") : "Start drawdown") {
+                        if !drawdownStarted { drawdownStarted = true; running = true }
+                        else if running { running = false; drawdownSeconds = seconds }
+                        else { goTaste = true }
+                    }
+                    .buttonStyle(.borderedProminent).tint(drawdownStarted && running ? .red : Color.coffee).controlSize(.large)
+                }
+            } else {
+                HStack { Button("Skip step") { advance() }.buttonStyle(.bordered); Button(running ? "Pause" : "Resume") { running.toggle() }.buttonStyle(.borderedProminent) }.controlSize(.large)
+            }
             Spacer()
         }
         .padding(24)
         .background(Color.space)
-        .onReceive(timer) { _ in guard running else { return }; seconds += 1; if seconds >= current.seconds { advance() } }
-        .navigationDestination(isPresented: $goTaste) { TasteView(bag: bag, dose: dose, water: water, grinder: grinder, setting: setting) }
+        .onReceive(timer) { _ in guard running else { return }; seconds += 1; if !isDrawdown && seconds >= current.seconds { advance() } }
+        .navigationDestination(isPresented: $goTaste) { TasteView(bag: bag, dose: dose, water: water, grinder: grinder, setting: setting, timingLabel: "Drawdown", timingSeconds: drawdownSeconds) }
         .preferredColorScheme(.dark)
     }
-    func advance() { UINotificationFeedbackGenerator().notificationOccurred(.success); seconds = 0; stage += 1; if stage >= recipe.stages.count { running = false; goTaste = true } }
+    var isDrawdown: Bool { current.name.localizedCaseInsensitiveContains("drawdown") }
+    func advance() { UINotificationFeedbackGenerator().notificationOccurred(.success); seconds = 0; stage += 1; if stage >= recipe.stages.count { running = false; goTaste = true } else if isDrawdown { running = false } }
     func time(_ n: Int) -> String { String(format: "%d:%02d", max(0,n)/60, max(0,n)%60) }
 }
 
@@ -407,7 +430,12 @@ private struct PourMotionGuide: View {
 
 private struct TasteView: View {
     let bag: CoffeeBag, dose, water: Double, grinder, setting: String
+    let timingLabel: String?
+    let timingSeconds: Int?
     let choices = ["Sour", "Bitter", "Balanced", "Weak", "Strong", "Sweet", "Fruity", "Floral"]
+    init(bag: CoffeeBag, dose: Double, water: Double, grinder: String, setting: String, timingLabel: String? = nil, timingSeconds: Int? = nil) {
+        self.bag = bag; self.dose = dose; self.water = water; self.grinder = grinder; self.setting = setting; self.timingLabel = timingLabel; self.timingSeconds = timingSeconds
+    }
     var body: some View {
         GuidedTastingLog(
             category: .coffee,
@@ -419,11 +447,54 @@ private struct TasteView: View {
             choices: choices,
             tint: Color.coffee,
             contextPrompt: "How did you brew it?",
-            initialContext: "\(Int(dose))g coffee · \(Int(water))g water · \(grinder) \(setting)",
+            initialContext: "\(Int(dose))g coffee · \(Int(water))g water · \(grinder) \(setting)\(timingText)",
             savedMessage: "Saved to your coffee history.",
+            measurementLabel: timingLabel,
+            measurementSeconds: timingSeconds,
             destination: AnyView(CoffeeShelfView())
         )
     }
+    private var timingText: String { guard let timingLabel, let timingSeconds else { return "" }; return " · \(timingLabel) \(time(timingSeconds))" }
+    private func time(_ seconds: Int) -> String { String(format: "%d:%02d", seconds / 60, seconds % 60) }
+}
+
+private struct EspressoTimerView: View {
+    let bag: CoffeeBag
+    let dose, yield: Double
+    let grinder, setting: String
+    let suggestedShotTime: Int
+    @State private var seconds = 0
+    @State private var running = false
+    @State private var finished = false
+    @State private var timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        VStack(spacing: 26) {
+            Spacer()
+            Text("ESPRESSO / EXTRACTION").eyebrow().foregroundStyle(Color.coffee)
+            Text("Time the shot").displayTitle()
+            Text("Start with the pump. Stop when your target yield is reached; this timing will travel with your tasting note.").supportingText().multilineTextAlignment(.center)
+            ZStack {
+                Circle().stroke(Color.coffee.opacity(0.35), lineWidth: 2).frame(width: 272, height: 272)
+                VStack(spacing: 8) {
+                    Text(time(seconds)).font(.system(size: 62, weight: .regular, design: .serif)).monospacedDigit()
+                    Text("Suggested: \(suggestedShotTime) sec").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Button(running ? "Stop extraction" : (seconds == 0 ? "Start extraction" : "Resume extraction")) { running.toggle() }
+                .buttonStyle(.borderedProminent).tint(running ? .red : Color.coffee).controlSize(.large)
+            if !running && seconds > 0 {
+                Button("Use \(time(seconds)) and continue") { finished = true }.buttonStyle(.bordered)
+            }
+            Spacer()
+        }
+        .padding(24).background(Color.space)
+        .onReceive(timer) { _ in if running { seconds += 1 } }
+        .navigationDestination(isPresented: $finished) { TasteView(bag: bag, dose: dose, water: yield, grinder: grinder, setting: setting, timingLabel: "Extraction", timingSeconds: seconds) }
+        .preferredColorScheme(.dark)
+    }
+
+    private func time(_ value: Int) -> String { String(format: "%d:%02d", value / 60, value % 60) }
 }
 
 private struct RecommendationView: View { let title, copy: String; let bag: CoffeeBag; var body: some View { VStack(alignment: .leading, spacing: 22) { Spacer(); HStack(spacing: 16) { Image("PalateMark").resizable().scaledToFit().frame(width: 46, height: 46); Image(systemName: "checkmark").font(.title2).foregroundStyle(Color.sage).frame(width: 46, height: 46).overlay(Circle().stroke(Color.sage)) }; Text("BREW SAVED").eyebrow(); Text("Tasting recorded").displayTitle(); Text(bag.name).supportingText(); VStack(alignment: .leading, spacing: 10) { Text("NEXT BREW").eyebrow(); Text(title).font(.title2).fontDesign(.serif); Text(copy).supportingText() }.padding(20).background(Color.coffee.opacity(0.1), in: RoundedRectangle(cornerRadius: 18)); Spacer(); NavigationLink { CoffeeShelfView() } label: { HStack { Text("Back to coffee"); Spacer(); Image(systemName: "arrow.right") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(Color.starlight, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.black) } }.padding(24).background(Color.space).preferredColorScheme(.dark).navigationBarBackButtonHidden() } }
@@ -575,12 +646,13 @@ private struct WineCard: View {
 }
 
 private struct WineDetailView: View {
+    @EnvironmentObject private var history: TastingHistoryStore
     @Binding var bottle: WineBottle
     @State private var mapPosition: MapCameraPosition
     @State private var showTaste = false
     @State private var showEdit = false
     init(bottle: Binding<WineBottle>) { _bottle = bottle; let value = bottle.wrappedValue; _mapPosition = State(initialValue: .region(MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: value.latitude, longitude: value.longitude), span: MKCoordinateSpan(latitudeDelta: 9, longitudeDelta: 9)))) }
-    var body: some View { ScrollView { VStack(alignment: .leading, spacing: 22) { Text("WINE / BOTTLE").eyebrow().foregroundStyle(Color.wine); Text(bottle.name).displayTitle(); Text("\(bottle.producer) · \(bottle.vintage)").supportingText(); provenanceMap(title: bottle.region, subtitle: "\(bottle.country) · Explore origin", tint: Color.wine); GroupBox("Details") { DetailGrid(items: [("GRAPE", bottle.grapes), ("REGION", bottle.region), ("VINTAGE", bottle.vintage)]) }.groupBoxStyle(DarkGroupBox()); GroupBox("Producer notes") { FlowLayout(items: bottle.notes) { Text($0).padding(9).background(Color.wine.opacity(0.13), in: Capsule()) } }.groupBoxStyle(DarkGroupBox()); TastingHistoryCard(productID: bottle.id, tint: Color.wine); Button { showTaste = true } label: { HStack { Text("Log tasting"); Spacer(); Image(systemName: "wineglass.fill") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(Color.wine, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.black) } }.padding(20) }.background(Color.space).navigationDestination(isPresented: $showTaste) { WineTastingView(bottle: bottle) }.toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Edit") { showEdit = true } } }.sheet(isPresented: $showEdit) { EditWineView(bottle: $bottle) }.preferredColorScheme(.dark) }
+    var body: some View { ScrollView { VStack(alignment: .leading, spacing: 22) { Text("WINE / BOTTLE").eyebrow().foregroundStyle(Color.wine); Text(bottle.name).displayTitle(); Text("\(bottle.producer) · \(bottle.vintage)").supportingText(); provenanceMap(title: bottle.region, subtitle: "\(bottle.country) · Explore origin", tint: Color.wine); GroupBox("Details") { DetailGrid(items: [("GRAPE", bottle.grapes), ("REGION", bottle.region), ("VINTAGE", bottle.vintage)]) }.groupBoxStyle(DarkGroupBox()); GroupBox("Producer notes") { FlowLayout(items: bottle.notes) { Text($0).padding(9).background(Color.wine.opacity(0.13), in: Capsule()) } }.groupBoxStyle(DarkGroupBox()); TastingHistoryCard(productID: bottle.id, tint: Color.wine); NavigationLink { PalateProfileView(request: .wine(bottle, records: history.records(for: bottle.id)), tint: Color.wine) } label: { HStack { Label("Ask Palate", systemImage: "sparkles"); Spacer(); Image(systemName: "arrow.right") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(Color.wine.opacity(0.18), in: RoundedRectangle(cornerRadius: 14)) }; Button { showTaste = true } label: { HStack { Text("Log tasting"); Spacer(); Image(systemName: "wineglass.fill") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(Color.wine, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.black) } }.padding(20) }.background(Color.space).navigationDestination(isPresented: $showTaste) { WineTastingView(bottle: bottle) }.toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Edit") { showEdit = true } } }.sheet(isPresented: $showEdit) { EditWineView(bottle: $bottle) }.preferredColorScheme(.dark) }
     @ViewBuilder private func provenanceMap(title: String, subtitle: String, tint: Color) -> some View { VStack(alignment: .leading, spacing: 0) { Map(position: $mapPosition) { Marker(title, coordinate: CLLocationCoordinate2D(latitude: bottle.latitude, longitude: bottle.longitude)).tint(tint) }.frame(height: 210).clipShape(RoundedRectangle(cornerRadius: 18)); VStack(alignment: .leading, spacing: 3) { Text("ORIGIN").eyebrow().foregroundStyle(tint); Text(title).font(.title3.weight(.medium)); Text(subtitle).font(.caption).foregroundStyle(.secondary) }.padding(15) }.background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18)) }
 }
 
@@ -588,7 +660,7 @@ private struct WineTastingView: View {
     let bottle: WineBottle
     let choices = ["Light", "Structured", "Fresh", "Earthy", "Fruit-forward", "Silky", "Tannic", "Long finish"]
     var body: some View {
-        GuidedTastingLog(category: .wine, productID: bottle.id, product: bottle.name, producer: bottle.producer, title: "Log this pour", eyebrow: "WINE / TASTING NOTE", choices: choices, tint: Color.wine, contextPrompt: "Where or with what are you tasting?", initialContext: "", savedMessage: "Saved to your cellar history.", destination: AnyView(WineShelfView()))
+        GuidedTastingLog(category: .wine, productID: bottle.id, product: bottle.name, producer: bottle.producer, title: "Log this pour", eyebrow: "WINE / TASTING NOTE", choices: choices, tint: Color.wine, contextPrompt: "Where or with what are you tasting?", initialContext: "", savedMessage: "Saved to your cellar history.", measurementLabel: nil, measurementSeconds: nil, destination: AnyView(WineShelfView()))
     }
 }
 
@@ -604,16 +676,17 @@ private struct ScotchShelfView: View {
 private struct ScotchCard: View { let bottle: ScotchBottle; var body: some View { VStack(alignment: .leading, spacing: 13) { HStack { Text(bottle.distillery.uppercased()).eyebrow().foregroundStyle(Color.scotch); Spacer(); Text(bottle.ageStatement).font(.caption.weight(.semibold)).foregroundStyle(.secondary) }; Text(bottle.name).font(.system(size: 29, weight: .regular, design: .serif)); Text("\(bottle.region) · \(bottle.cask)").font(.subheadline).foregroundStyle(.secondary); Divider().overlay(.white.opacity(0.15)); HStack { Label(bottle.abv, systemImage: "drop.fill"); Spacer(); Image(systemName: "arrow.up.right") }.font(.caption).foregroundStyle(Color.scotch) }.padding(20).background(LinearGradient(colors: [Color.scotch.opacity(0.24), .brown.opacity(0.17)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 22)) } }
 
 private struct ScotchDetailView: View {
+    @EnvironmentObject private var history: TastingHistoryStore
     @Binding var bottle: ScotchBottle; @State private var mapPosition: MapCameraPosition; @State private var showTaste = false; @State private var showEdit = false
     init(bottle: Binding<ScotchBottle>) { _bottle = bottle; let value = bottle.wrappedValue; _mapPosition = State(initialValue: .region(MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: value.latitude, longitude: value.longitude), span: MKCoordinateSpan(latitudeDelta: 4, longitudeDelta: 4)))) }
-    var body: some View { ScrollView { VStack(alignment: .leading, spacing: 22) { Text("SCOTCH / BOTTLE").eyebrow().foregroundStyle(Color.scotch); Text(bottle.name).displayTitle(); Text("\(bottle.distillery) · \(bottle.ageStatement) · \(bottle.abv)").supportingText(); VStack(alignment: .leading, spacing: 0) { Map(position: $mapPosition) { Marker(bottle.region, coordinate: CLLocationCoordinate2D(latitude: bottle.latitude, longitude: bottle.longitude)).tint(Color.scotch) }.frame(height: 210).clipShape(RoundedRectangle(cornerRadius: 18)); VStack(alignment: .leading, spacing: 3) { Text("DISTILLERY ORIGIN").eyebrow().foregroundStyle(Color.scotch); Text(bottle.region).font(.title3.weight(.medium)); Text("Scotland · Explore origin").font(.caption).foregroundStyle(.secondary) }.padding(15) }.background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18)); GroupBox("Details") { DetailGrid(items: [("CASK", bottle.cask), ("REGION", bottle.region), ("STRENGTH", bottle.abv)]) }.groupBoxStyle(DarkGroupBox()); GroupBox("Distillery notes") { FlowLayout(items: bottle.notes) { Text($0).padding(9).background(Color.scotch.opacity(0.13), in: Capsule()) } }.groupBoxStyle(DarkGroupBox()); TastingHistoryCard(productID: bottle.id, tint: Color.scotch); Button { showTaste = true } label: { HStack { Text("Log tasting"); Spacer(); Image(systemName: "flame.fill") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(Color.scotch, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.black) } }.padding(20) }.background(Color.space).navigationDestination(isPresented: $showTaste) { ScotchTastingView(bottle: bottle) }.toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Edit") { showEdit = true } } }.sheet(isPresented: $showEdit) { EditScotchView(bottle: $bottle) }.preferredColorScheme(.dark) }
+    var body: some View { ScrollView { VStack(alignment: .leading, spacing: 22) { Text("SCOTCH / BOTTLE").eyebrow().foregroundStyle(Color.scotch); Text(bottle.name).displayTitle(); Text("\(bottle.distillery) · \(bottle.ageStatement) · \(bottle.abv)").supportingText(); VStack(alignment: .leading, spacing: 0) { Map(position: $mapPosition) { Marker(bottle.region, coordinate: CLLocationCoordinate2D(latitude: bottle.latitude, longitude: bottle.longitude)).tint(Color.scotch) }.frame(height: 210).clipShape(RoundedRectangle(cornerRadius: 18)); VStack(alignment: .leading, spacing: 3) { Text("DISTILLERY ORIGIN").eyebrow().foregroundStyle(Color.scotch); Text(bottle.region).font(.title3.weight(.medium)); Text("Scotland · Explore origin").font(.caption).foregroundStyle(.secondary) }.padding(15) }.background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18)); GroupBox("Details") { DetailGrid(items: [("CASK", bottle.cask), ("REGION", bottle.region), ("STRENGTH", bottle.abv)]) }.groupBoxStyle(DarkGroupBox()); GroupBox("Distillery notes") { FlowLayout(items: bottle.notes) { Text($0).padding(9).background(Color.scotch.opacity(0.13), in: Capsule()) } }.groupBoxStyle(DarkGroupBox()); TastingHistoryCard(productID: bottle.id, tint: Color.scotch); NavigationLink { PalateProfileView(request: .scotch(bottle, records: history.records(for: bottle.id)), tint: Color.scotch) } label: { HStack { Label("Ask Palate", systemImage: "sparkles"); Spacer(); Image(systemName: "arrow.right") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(Color.scotch.opacity(0.18), in: RoundedRectangle(cornerRadius: 14)) }; Button { showTaste = true } label: { HStack { Text("Log tasting"); Spacer(); Image(systemName: "flame.fill") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(Color.scotch, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.black) } }.padding(20) }.background(Color.space).navigationDestination(isPresented: $showTaste) { ScotchTastingView(bottle: bottle) }.toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Edit") { showEdit = true } } }.sheet(isPresented: $showEdit) { EditScotchView(bottle: $bottle) }.preferredColorScheme(.dark) }
 }
 
 private struct ScotchTastingView: View {
     let bottle: ScotchBottle
     let choices = ["Honeyed", "Sherried", "Smoky", "Maritime", "Oily", "Spiced", "Dry", "Long finish"]
     var body: some View {
-        GuidedTastingLog(category: .scotch, productID: bottle.id, product: bottle.name, producer: bottle.distillery, title: "Log this dram", eyebrow: "SCOTCH / TASTING NOTE", choices: choices, tint: Color.scotch, contextPrompt: "How are you drinking it?", initialContext: "Neat", savedMessage: "Saved to your cabinet history.", destination: AnyView(ScotchShelfView()))
+        GuidedTastingLog(category: .scotch, productID: bottle.id, product: bottle.name, producer: bottle.distillery, title: "Log this dram", eyebrow: "SCOTCH / TASTING NOTE", choices: choices, tint: Color.scotch, contextPrompt: "How are you drinking it?", initialContext: "Neat", savedMessage: "Saved to your cabinet history.", measurementLabel: nil, measurementSeconds: nil, destination: AnyView(ScotchShelfView()))
     }
 }
 
@@ -632,6 +705,8 @@ private struct GuidedTastingLog: View {
     let choices: [String]
     let tint: Color
     let contextPrompt, initialContext, savedMessage: String
+    let measurementLabel: String?
+    let measurementSeconds: Int?
     let destination: AnyView
 
     @State private var step = 0
@@ -639,6 +714,7 @@ private struct GuidedTastingLog: View {
     @State private var selected: Set<String> = []
     @State private var rating = 0
     @State private var note = ""
+    @State private var measuredSeconds = 0
     @State private var saved = false
 
     private var stepTitle: String { ["Set the scene", "What stood out?", "Make it memorable"][step] }
@@ -658,6 +734,15 @@ private struct GuidedTastingLog: View {
                 GroupBox(stepTitle) {
                     if step == 0 {
                         Text("A little context makes this tasting easier to revisit later.").supportingText()
+                        if let measurementLabel {
+                            Stepper(value: $measuredSeconds, in: 0...900, step: 1) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("\(measurementLabel) time").font(.subheadline.weight(.semibold))
+                                    Text(measuredSeconds > 0 ? time(measuredSeconds) : "Not recorded").font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                            .tint(tint)
+                        }
                         TextField(contextPrompt, text: $context, axis: .vertical)
                             .lineLimit(2...4)
                             .textFieldStyle(.roundedBorder)
@@ -694,7 +779,7 @@ private struct GuidedTastingLog: View {
             .padding(20)
         }
         .background(Color.space)
-        .onAppear { if context.isEmpty { context = initialContext } }
+        .onAppear { if context.isEmpty { context = initialContext }; if let measurementSeconds { measuredSeconds = measurementSeconds } }
         .navigationDestination(isPresented: $saved) {
             TastingSavedView(product: product, message: savedMessage, tint: tint, destination: destination)
         }
@@ -705,9 +790,11 @@ private struct GuidedTastingLog: View {
         if selected.contains(choice) { selected.remove(choice) } else { selected.insert(choice) }
     }
 
+    private func time(_ seconds: Int) -> String { String(format: "%d:%02d", seconds / 60, seconds % 60) }
+
     private func advance() {
         guard step < 2 else {
-            history.add(TastingRecord(category: category, productID: productID, productName: product, producerName: producer, context: context, descriptors: selected.sorted(), rating: rating, note: note))
+            history.add(TastingRecord(category: category, productID: productID, productName: product, producerName: producer, context: context, measurementLabel: measurementLabel, measurementSeconds: measuredSeconds > 0 ? measuredSeconds : nil, descriptors: selected.sorted(), rating: rating, note: note))
             saved = true
             return
         }
@@ -737,6 +824,7 @@ private struct TastingHistoryCard: View {
                                 if record.rating > 0 { Text(String(repeating: "★", count: record.rating)).font(.caption).foregroundStyle(tint) }
                             }
                             if !record.descriptors.isEmpty { Text(record.descriptors.joined(separator: " · ")).font(.subheadline.weight(.medium)) }
+                            if let label = record.measurementLabel, let seconds = record.measurementSeconds { Label("\(label): \(time(seconds))", systemImage: "timer").font(.caption.weight(.medium)).foregroundStyle(tint) }
                             if !record.context.isEmpty { Text(record.context).font(.caption).foregroundStyle(.secondary) }
                             if record.hasNote { Text(record.note).font(.caption).foregroundStyle(.secondary).italic() }
                         }
@@ -748,6 +836,91 @@ private struct TastingHistoryCard: View {
         }
         .groupBoxStyle(DarkGroupBox())
     }
+    private func time(_ seconds: Int) -> String { String(format: "%d:%02d", seconds / 60, seconds % 60) }
+}
+
+private struct PalateProfileView: View {
+    let request: PalateProfileRequest
+    let tint: Color
+    @State private var profile: PalateProfile?
+    @State private var error: String?
+    @State private var isLoading = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                Text("PALATE INTELLIGENCE").eyebrow().foregroundStyle(tint)
+                Text("Meet your\nbeverage.").displayTitle()
+                Text("A guided perspective built from this item’s details and your saved tasting history.").supportingText()
+
+                if isLoading {
+                    VStack(spacing: 14) { ProgressView().tint(tint); Text("Building your profile…").font(.subheadline).foregroundStyle(.secondary) }
+                        .frame(maxWidth: .infinity).padding(44).background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
+                } else if let profile {
+                    profileContent(profile)
+                } else if let error {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("Profile unavailable", systemImage: "sparkles").font(.headline)
+                        Text(error).supportingText()
+                        Button("Try again") { Task { await load() } }.buttonStyle(.bordered).tint(tint)
+                    }
+                    .padding(18).background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
+                }
+            }
+            .padding(20)
+        }
+        .background(Color.space)
+        .task { await load() }
+        .preferredColorScheme(.dark)
+    }
+
+    @ViewBuilder private func profileContent(_ profile: PalateProfile) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text(profile.identity.snapshot).font(.title3.weight(.semibold))
+                HStack(spacing: 8) {
+                    Text("\(profile.identity.confidence)% identification confidence").font(.caption.weight(.semibold)).foregroundStyle(tint)
+                    Text(profile.identity.evidence).font(.caption).foregroundStyle(.secondary)
+                }
+                Text(profile.summary).font(.body)
+            }.padding(18).background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 18))
+
+            ProfileSection(title: "Its story", copy: profile.story, tint: tint)
+            GroupBox("Expected sensory profile") {
+                VStack(alignment: .leading, spacing: 13) {
+                    ForEach(profile.sensory, id: \.name) { group in
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(group.name.uppercased()).eyebrow().foregroundStyle(tint)
+                            Text(group.notes.joined(separator: " · ")).font(.subheadline.weight(.medium))
+                            Text(group.basis).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }.groupBoxStyle(DarkGroupBox())
+            ProfileListSection(title: "Taste along with Palate", items: profile.tastingPrompts, symbol: "eye", tint: tint)
+            ProfileListSection(title: "Preparation & enjoyment", items: profile.preparation, symbol: "slider.horizontal.3", tint: tint)
+            if !profile.personalization.isEmpty { ProfileSection(title: "Why this may click for you", copy: profile.personalization, tint: tint) }
+            ProfileSection(title: "Keep exploring", copy: profile.discovery, tint: tint)
+            if !profile.caveats.isEmpty { Text(profile.caveats.joined(separator: " ")).font(.caption).foregroundStyle(.secondary) }
+        }
+    }
+
+    private func load() async {
+        isLoading = true; error = nil
+        do { profile = try await PalateIntelligenceService.profile(for: request) }
+        catch { self.error = error.localizedDescription }
+        isLoading = false
+    }
+}
+
+private struct ProfileSection: View {
+    let title, copy: String; let tint: Color
+    var body: some View { VStack(alignment: .leading, spacing: 7) { Text(title.uppercased()).eyebrow().foregroundStyle(tint); Text(copy).font(.body).fixedSize(horizontal: false, vertical: true) }.padding(18).background(Color.surface, in: RoundedRectangle(cornerRadius: 18)) }
+}
+
+private struct ProfileListSection: View {
+    let title: String; let items: [String]; let symbol: String; let tint: Color
+    var body: some View { GroupBox(title) { VStack(alignment: .leading, spacing: 12) { ForEach(Array(items.enumerated()), id: \.offset) { _, item in Label { Text(item).font(.subheadline) } icon: { Image(systemName: symbol).foregroundStyle(tint) } } } }.groupBoxStyle(DarkGroupBox()) }
 }
 
 private struct TastingSavedView: View { let product, message: String; let tint: Color; let destination: AnyView; var body: some View { VStack(alignment: .leading, spacing: 22) { Spacer(); Image(systemName: "checkmark").font(.title2).foregroundStyle(tint).frame(width: 48, height: 48).overlay(Circle().stroke(tint)); Text("TASTING SAVED").eyebrow().foregroundStyle(tint); Text("\(product),\nremembered.").displayTitle(); Text(message).serifMuted(); Spacer(); NavigationLink { destination } label: { HStack { Text("Back to your collection"); Spacer(); Image(systemName: "arrow.right") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(tint, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.black) } }.padding(24).background(Color.space).preferredColorScheme(.dark).navigationBarBackButtonHidden() } }

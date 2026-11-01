@@ -18,6 +18,8 @@ struct TastingRecord: Identifiable, Codable, Hashable {
     var producerName: String
     var date: Date = .now
     var context: String
+    var measurementLabel: String? = nil
+    var measurementSeconds: Int? = nil
     var descriptors: [String]
     var rating: Int
     var note: String
@@ -50,6 +52,115 @@ final class TastingHistoryStore: ObservableObject {
         guard let data = try? JSONEncoder().encode(records) else { return }
         UserDefaults.standard.set(data, forKey: storageKey)
     }
+}
+
+struct PalateProfileRequest: Codable {
+    struct RecentTasting: Codable {
+        let date: Date
+        let descriptors: [String]
+        let rating: Int
+        let note: String
+        let context: String
+        let measurementLabel: String?
+        let measurementSeconds: Int?
+    }
+
+    let category: TastingCategory
+    let productName: String
+    let producer: String
+    let attributes: [String: String]
+    let recentTastings: [RecentTasting]
+    let labelImageBase64: String?
+
+    static func coffee(_ bag: CoffeeBag, records: [TastingRecord]) -> Self {
+        Self(category: .coffee, productName: bag.name, producer: bag.roaster, attributes: ["origin": bag.originDetail, "process": bag.process, "roaster notes": bag.notes.joined(separator: ", "), "last recipe": "\(Int(bag.lastDose))g coffee · \(Int(bag.lastWater))g water · grind \(bag.lastGrind)"], recentTastings: history(records), labelImageBase64: bag.imageData?.base64EncodedString())
+    }
+
+    static func wine(_ bottle: WineBottle, records: [TastingRecord]) -> Self {
+        Self(category: .wine, productName: bottle.name, producer: bottle.producer, attributes: ["vintage": bottle.vintage, "grapes": bottle.grapes, "region": bottle.region, "country": bottle.country, "producer notes": bottle.notes.joined(separator: ", ")], recentTastings: history(records), labelImageBase64: bottle.imageData?.base64EncodedString())
+    }
+
+    static func scotch(_ bottle: ScotchBottle, records: [TastingRecord]) -> Self {
+        Self(category: .scotch, productName: bottle.name, producer: bottle.distillery, attributes: ["age statement": bottle.ageStatement, "region": bottle.region, "cask": bottle.cask, "ABV": bottle.abv, "distillery notes": bottle.notes.joined(separator: ", ")], recentTastings: history(records), labelImageBase64: bottle.imageData?.base64EncodedString())
+    }
+
+    private static func history(_ records: [TastingRecord]) -> [RecentTasting] {
+        records.prefix(8).map { RecentTasting(date: $0.date, descriptors: $0.descriptors, rating: $0.rating, note: $0.note, context: $0.context, measurementLabel: $0.measurementLabel, measurementSeconds: $0.measurementSeconds) }
+    }
+}
+
+struct PalateProfile: Codable {
+    struct Identity: Codable { let snapshot: String; let confidence: Int; let evidence: String }
+    struct SensoryGroup: Codable { let name: String; let notes: [String]; let basis: String }
+    let identity: Identity
+    let summary: String
+    let story: String
+    let sensory: [SensoryGroup]
+    let tastingPrompts: [String]
+    let preparation: [String]
+    let personalization: String
+    let discovery: String
+    let caveats: [String]
+}
+
+enum PalateIntelligenceError: LocalizedError {
+    case notConfigured, invalidResponse, service(String)
+    var errorDescription: String? {
+        switch self {
+        case .notConfigured: "AI profiles need a Palate Intelligence service URL before they can be generated."
+        case .invalidResponse: "Palate received an unreadable profile. Please try again."
+        case .service(let message): message
+        }
+    }
+}
+
+enum PalateIntelligenceService {
+    static func profile(for request: PalateProfileRequest) async throws -> PalateProfile {
+        guard let rawURL = Bundle.main.object(forInfoDictionaryKey: "PALATE_INTELLIGENCE_URL") as? String,
+              let url = URL(string: rawURL), !rawURL.isEmpty else { throw PalateIntelligenceError.notConfigured }
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONEncoder().encode(request)
+        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+        guard let http = response as? HTTPURLResponse else { throw PalateIntelligenceError.invalidResponse }
+        guard (200..<300).contains(http.statusCode) else {
+            let message = (try? JSONDecoder().decode(PalateServiceError.self, from: data).error) ?? "Palate Intelligence is temporarily unavailable."
+            throw PalateIntelligenceError.service(message)
+        }
+        guard let profile = try? JSONDecoder().decode(PalateProfile.self, from: data) else { throw PalateIntelligenceError.invalidResponse }
+        return profile
+    }
+
+    private struct PalateServiceError: Decodable { let error: String }
+}
+
+struct PalateLabelEnrichment: Codable {
+    struct Field: Codable, Hashable { let label: String; let value: String; let confidence: Int; let basis: String }
+    let fields: [Field]
+    let caveats: [String]
+}
+
+enum PalateLabelEnrichmentService {
+    static func enrich(category: TastingCategory, recognizedLines: [String], imageData: Data) async throws -> PalateLabelEnrichment {
+        guard let rawURL = Bundle.main.object(forInfoDictionaryKey: "PALATE_INTELLIGENCE_URL") as? String,
+              let url = URL(string: rawURL), !rawURL.isEmpty else { throw PalateIntelligenceError.notConfigured }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(EnrichmentRequest(mode: "enrich_label", category: category, recognizedLines: recognizedLines, labelImageBase64: imageData.base64EncodedString()))
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw PalateIntelligenceError.invalidResponse }
+        guard (200..<300).contains(http.statusCode) else {
+            let message = (try? JSONDecoder().decode(ServiceError.self, from: data).error) ?? "Palate Intelligence is temporarily unavailable."
+            throw PalateIntelligenceError.service(message)
+        }
+        guard let enrichment = try? JSONDecoder().decode(PalateLabelEnrichment.self, from: data) else { throw PalateIntelligenceError.invalidResponse }
+        return enrichment
+    }
+
+    private struct EnrichmentRequest: Codable { let mode: String; let category: TastingCategory; let recognizedLines: [String]; let labelImageBase64: String }
+    private struct ServiceError: Decodable { let error: String }
 }
 
 struct CoffeeBag: Identifiable, Codable, Hashable {
