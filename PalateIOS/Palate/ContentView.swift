@@ -301,7 +301,7 @@ private struct BrewSetupView: View {
 
                 TastingHistoryCard(productID: bag.id, tint: Color.coffee)
 
-                NavigationLink { PalateProfileView(request: .coffee(bag, records: history.records(for: bag.id)), tint: Color.coffee) } label: {
+                NavigationLink { PalateProfileView(request: .coffee(bag, records: history.records(for: bag.id)), productID: bag.id, tint: Color.coffee) } label: {
                     HStack { Label("Ask Palate", systemImage: "sparkles"); Spacer(); Image(systemName: "arrow.right") }
                         .fontWeight(.bold).padding().frame(maxWidth: .infinity)
                         .background(Color.coffee.opacity(0.17), in: RoundedRectangle(cornerRadius: 14))
@@ -505,7 +505,7 @@ private struct RecommendationView: View { let title, copy: String; let bag: Coff
 private struct AddCoffeeView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""; @State private var roaster = "Olympia Coffee"; @State private var origin = ""; @State private var estate = ""; @State private var county = ""; @State private var process = ""; @State private var notes = ""
-    @State private var roastDate = Date(); @State private var imageData: Data?
+    @State private var roastDate = Date(); @State private var imageData: Data?; @State private var backImageData: Data?
     let save: (CoffeeBag) -> Void
 
     var body: some View { NavigationStack { Form {
@@ -519,10 +519,11 @@ private struct AddCoffeeView: View {
             }
             Text("Capture the full front label in even light. Review detected details before applying them.").font(.caption).foregroundStyle(.secondary)
         }
+        Section("Back label (optional)") { BackLabelPhotoControl(imageData: $backImageData) }
         Section("Bag details") {
             TextField("Roaster", text: $roaster); TextField("Coffee name", text: $name); DatePicker("Roast date", selection: $roastDate, displayedComponents: .date); TextField("Origin country / region", text: $origin); TextField("Estate or farm (optional)", text: $estate); TextField("County or subregion (optional)", text: $county); TextField("Process", text: $process); TextField("Roaster notes, comma separated", text: $notes)
         }
-    }.navigationTitle("Add coffee").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Add") { guard !name.isEmpty else { return }; save(CoffeeBag(name: name, roaster: roaster, origin: origin, process: process, notes: notes.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }, accent: "indigo", estate: estate.nilIfBlank, county: county.nilIfBlank, roastDate: roastDate, imageData: imageData)); dismiss() } } } }.preferredColorScheme(.dark) } }
+    }.navigationTitle("Add coffee").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Add") { guard !name.isEmpty else { return }; save(CoffeeBag(name: name, roaster: roaster, origin: origin, process: process, notes: notes.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }, accent: "indigo", estate: estate.nilIfBlank, county: county.nilIfBlank, roastDate: roastDate, imageData: imageData, backImageData: backImageData)); dismiss() } } } }.preferredColorScheme(.dark) } }
 
 private struct EditCoffeeView: View {
     @Environment(\.dismiss) private var dismiss
@@ -553,6 +554,7 @@ private struct EditCoffeeView: View {
             }
             if draft.imageData != nil { Button("Remove photo", role: .destructive) { draft.imageData = nil } }
         }
+        Section("Back label (optional)") { BackLabelPhotoControl(imageData: $draft.backImageData) }
         Section("Bag details") {
             TextField("Roaster", text: $draft.roaster); TextField("Coffee name", text: $draft.name); DatePicker("Roast date", selection: roastDate, displayedComponents: .date); TextField("Origin country / region", text: $draft.origin); TextField("Estate or farm (optional)", text: estate); TextField("County or subregion (optional)", text: county); TextField("Process", text: $draft.process); TextField("Roaster notes, comma separated", text: $notes)
         }
@@ -655,7 +657,7 @@ private struct WineDetailView: View {
     @State private var showTaste = false
     @State private var showEdit = false
     init(bottle: Binding<WineBottle>) { _bottle = bottle; let value = bottle.wrappedValue; _mapPosition = State(initialValue: .region(MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: value.latitude, longitude: value.longitude), span: MKCoordinateSpan(latitudeDelta: 9, longitudeDelta: 9)))) }
-    var body: some View { ScrollView { VStack(alignment: .leading, spacing: 22) { Text("WINE / BOTTLE").eyebrow().foregroundStyle(Color.wine); Text(bottle.name).displayTitle(); Text("\(bottle.producer) · \(bottle.vintage)").supportingText(); provenanceMap(title: bottle.region, subtitle: "\(bottle.country) · Explore origin", tint: Color.wine); GroupBox("Details") { DetailGrid(items: [("GRAPE", bottle.grapes), ("REGION", bottle.region), ("VINTAGE", bottle.vintage)]) }.groupBoxStyle(DarkGroupBox()); GroupBox("Producer notes") { FlowLayout(items: bottle.notes) { Text($0).padding(9).background(Color.wine.opacity(0.13), in: Capsule()) } }.groupBoxStyle(DarkGroupBox()); TastingHistoryCard(productID: bottle.id, tint: Color.wine); NavigationLink { PalateProfileView(request: .wine(bottle, records: history.records(for: bottle.id)), tint: Color.wine) } label: { HStack { Label("Ask Palate", systemImage: "sparkles"); Spacer(); Image(systemName: "arrow.right") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(Color.wine.opacity(0.18), in: RoundedRectangle(cornerRadius: 14)) }; Button { showTaste = true } label: { HStack { Text("Log tasting"); Spacer(); Image(systemName: "wineglass.fill") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(Color.wine, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.black) } }.padding(20) }.background(Color.space).navigationDestination(isPresented: $showTaste) { WineTastingView(bottle: bottle) }.toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Edit") { showEdit = true } } }.sheet(isPresented: $showEdit) { EditWineView(bottle: $bottle) }.preferredColorScheme(.dark) }
+    var body: some View { ScrollView { VStack(alignment: .leading, spacing: 22) { Text("WINE / BOTTLE").eyebrow().foregroundStyle(Color.wine); Text(bottle.name).displayTitle(); Text("\(bottle.producer) · \(bottle.vintage)").supportingText(); provenanceMap(title: bottle.region, subtitle: "\(bottle.country) · Explore origin", tint: Color.wine); GroupBox("Details") { DetailGrid(items: [("GRAPE", bottle.grapes), ("REGION", bottle.region), ("VINTAGE", bottle.vintage)]) }.groupBoxStyle(DarkGroupBox()); GroupBox("Producer notes") { FlowLayout(items: bottle.notes) { Text($0).padding(9).background(Color.wine.opacity(0.13), in: Capsule()) } }.groupBoxStyle(DarkGroupBox()); TastingHistoryCard(productID: bottle.id, tint: Color.wine); NavigationLink { PalateProfileView(request: .wine(bottle, records: history.records(for: bottle.id)), productID: bottle.id, tint: Color.wine) } label: { HStack { Label("Ask Palate", systemImage: "sparkles"); Spacer(); Image(systemName: "arrow.right") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(Color.wine.opacity(0.18), in: RoundedRectangle(cornerRadius: 14)) }; Button { showTaste = true } label: { HStack { Text("Log tasting"); Spacer(); Image(systemName: "wineglass.fill") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(Color.wine, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.black) } }.padding(20) }.background(Color.space).navigationDestination(isPresented: $showTaste) { WineTastingView(bottle: bottle) }.toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Edit") { showEdit = true } } }.sheet(isPresented: $showEdit) { EditWineView(bottle: $bottle) }.preferredColorScheme(.dark) }
     @ViewBuilder private func provenanceMap(title: String, subtitle: String, tint: Color) -> some View { VStack(alignment: .leading, spacing: 0) { Map(position: $mapPosition) { Marker(title, coordinate: CLLocationCoordinate2D(latitude: bottle.latitude, longitude: bottle.longitude)).tint(tint) }.frame(height: 210).clipShape(RoundedRectangle(cornerRadius: 18)); VStack(alignment: .leading, spacing: 3) { Text("ORIGIN").eyebrow().foregroundStyle(tint); Text(title).font(.title3.weight(.medium)); Text(subtitle).font(.caption).foregroundStyle(.secondary) }.padding(15) }.background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18)) }
 }
 
@@ -682,7 +684,7 @@ private struct ScotchDetailView: View {
     @EnvironmentObject private var history: TastingHistoryStore
     @Binding var bottle: ScotchBottle; @State private var mapPosition: MapCameraPosition; @State private var showTaste = false; @State private var showEdit = false
     init(bottle: Binding<ScotchBottle>) { _bottle = bottle; let value = bottle.wrappedValue; _mapPosition = State(initialValue: .region(MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: value.latitude, longitude: value.longitude), span: MKCoordinateSpan(latitudeDelta: 4, longitudeDelta: 4)))) }
-    var body: some View { ScrollView { VStack(alignment: .leading, spacing: 22) { Text("SCOTCH / BOTTLE").eyebrow().foregroundStyle(Color.scotch); Text(bottle.name).displayTitle(); Text("\(bottle.distillery) · \(bottle.ageStatement) · \(bottle.abv)").supportingText(); VStack(alignment: .leading, spacing: 0) { Map(position: $mapPosition) { Marker(bottle.region, coordinate: CLLocationCoordinate2D(latitude: bottle.latitude, longitude: bottle.longitude)).tint(Color.scotch) }.frame(height: 210).clipShape(RoundedRectangle(cornerRadius: 18)); VStack(alignment: .leading, spacing: 3) { Text("DISTILLERY ORIGIN").eyebrow().foregroundStyle(Color.scotch); Text(bottle.region).font(.title3.weight(.medium)); Text("Scotland · Explore origin").font(.caption).foregroundStyle(.secondary) }.padding(15) }.background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18)); GroupBox("Details") { DetailGrid(items: [("CASK", bottle.cask), ("REGION", bottle.region), ("STRENGTH", bottle.abv)]) }.groupBoxStyle(DarkGroupBox()); GroupBox("Distillery notes") { FlowLayout(items: bottle.notes) { Text($0).padding(9).background(Color.scotch.opacity(0.13), in: Capsule()) } }.groupBoxStyle(DarkGroupBox()); TastingHistoryCard(productID: bottle.id, tint: Color.scotch); NavigationLink { PalateProfileView(request: .scotch(bottle, records: history.records(for: bottle.id)), tint: Color.scotch) } label: { HStack { Label("Ask Palate", systemImage: "sparkles"); Spacer(); Image(systemName: "arrow.right") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(Color.scotch.opacity(0.18), in: RoundedRectangle(cornerRadius: 14)) }; Button { showTaste = true } label: { HStack { Text("Log tasting"); Spacer(); Image(systemName: "flame.fill") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(Color.scotch, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.black) } }.padding(20) }.background(Color.space).navigationDestination(isPresented: $showTaste) { ScotchTastingView(bottle: bottle) }.toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Edit") { showEdit = true } } }.sheet(isPresented: $showEdit) { EditScotchView(bottle: $bottle) }.preferredColorScheme(.dark) }
+    var body: some View { ScrollView { VStack(alignment: .leading, spacing: 22) { Text("SCOTCH / BOTTLE").eyebrow().foregroundStyle(Color.scotch); Text(bottle.name).displayTitle(); Text("\(bottle.distillery) · \(bottle.ageStatement) · \(bottle.abv)").supportingText(); VStack(alignment: .leading, spacing: 0) { Map(position: $mapPosition) { Marker(bottle.region, coordinate: CLLocationCoordinate2D(latitude: bottle.latitude, longitude: bottle.longitude)).tint(Color.scotch) }.frame(height: 210).clipShape(RoundedRectangle(cornerRadius: 18)); VStack(alignment: .leading, spacing: 3) { Text("DISTILLERY ORIGIN").eyebrow().foregroundStyle(Color.scotch); Text(bottle.region).font(.title3.weight(.medium)); Text("Scotland · Explore origin").font(.caption).foregroundStyle(.secondary) }.padding(15) }.background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18)); GroupBox("Details") { DetailGrid(items: [("CASK", bottle.cask), ("REGION", bottle.region), ("STRENGTH", bottle.abv)]) }.groupBoxStyle(DarkGroupBox()); GroupBox("Distillery notes") { FlowLayout(items: bottle.notes) { Text($0).padding(9).background(Color.scotch.opacity(0.13), in: Capsule()) } }.groupBoxStyle(DarkGroupBox()); TastingHistoryCard(productID: bottle.id, tint: Color.scotch); NavigationLink { PalateProfileView(request: .scotch(bottle, records: history.records(for: bottle.id)), productID: bottle.id, tint: Color.scotch) } label: { HStack { Label("Ask Palate", systemImage: "sparkles"); Spacer(); Image(systemName: "arrow.right") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(Color.scotch.opacity(0.18), in: RoundedRectangle(cornerRadius: 14)) }; Button { showTaste = true } label: { HStack { Text("Log tasting"); Spacer(); Image(systemName: "flame.fill") }.fontWeight(.bold).padding().frame(maxWidth: .infinity).background(Color.scotch, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.black) } }.padding(20) }.background(Color.space).navigationDestination(isPresented: $showTaste) { ScotchTastingView(bottle: bottle) }.toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Edit") { showEdit = true } } }.sheet(isPresented: $showEdit) { EditScotchView(bottle: $bottle) }.preferredColorScheme(.dark) }
 }
 
 private struct ScotchTastingView: View {
@@ -844,22 +846,29 @@ private struct TastingHistoryCard: View {
 
 private struct PalateProfileView: View {
     let request: PalateProfileRequest
+    let productID: UUID
     let tint: Color
     @State private var profile: PalateProfile?
     @State private var error: String?
     @State private var isLoading = false
+    @State private var updatedAt: Date?
+    @State private var loadedFromCache = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 Text("PALATE INTELLIGENCE").eyebrow().foregroundStyle(tint)
                 Text("Meet your\nbeverage.").displayTitle()
-                Text("A guided perspective built from this item’s details and your saved tasting history.").supportingText()
+                Text("A guided perspective built from this item’s details and your saved tasting history. Profiles are saved on this device; refresh when you want a new take.").supportingText()
 
                 if isLoading {
                     VStack(spacing: 14) { ProgressView().tint(tint); Text("Building your profile…").font(.subheadline).foregroundStyle(.secondary) }
                         .frame(maxWidth: .infinity).padding(44).background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
                 } else if let profile {
+                    if let error {
+                        Text("Couldn’t refresh the profile: \(error)")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     profileContent(profile)
                 } else if let error {
                     VStack(alignment: .leading, spacing: 12) {
@@ -874,6 +883,20 @@ private struct PalateProfileView: View {
         }
         .background(Color.space)
         .task { await load() }
+        .toolbar {
+            if profile != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Task { await load(forceRefresh: true) }
+                    } label: {
+                        if isLoading { ProgressView() }
+                        else { Label("Refresh", systemImage: "arrow.clockwise") }
+                    }
+                    .disabled(isLoading)
+                    .accessibilityLabel("Refresh Palate profile")
+                }
+            }
+        }
         .preferredColorScheme(.dark)
     }
 
@@ -887,6 +910,12 @@ private struct PalateProfileView: View {
                 }
                 Text(profile.summary).font(.body)
             }.padding(18).background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 18))
+
+            if let updatedAt {
+                Text("\(loadedFromCache ? "Saved profile" : "Updated") · \(updatedAt.formatted(date: .abbreviated, time: .shortened))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             ProfileSection(title: "Its story", copy: profile.story, tint: tint)
             GroupBox("Expected sensory profile") {
@@ -908,10 +937,26 @@ private struct PalateProfileView: View {
         }
     }
 
-    private func load() async {
-        isLoading = true; error = nil
-        do { profile = try await PalateIntelligenceService.profile(for: request) }
-        catch { self.error = error.localizedDescription }
+    private func load(forceRefresh: Bool = false) async {
+        if !forceRefresh, let cached = PalateProfileCache.load(productID: productID, request: request) {
+            profile = cached.profile
+            updatedAt = cached.updatedAt
+            loadedFromCache = true
+            error = nil
+            return
+        }
+
+        isLoading = true
+        error = nil
+        do {
+            let generated = try await PalateIntelligenceService.profile(for: request)
+            PalateProfileCache.save(generated, productID: productID, request: request)
+            profile = generated
+            updatedAt = .now
+            loadedFromCache = false
+        } catch {
+            self.error = error.localizedDescription
+        }
         isLoading = false
     }
 }
@@ -930,7 +975,7 @@ private struct TastingSavedView: View { let product, message: String; let tint: 
 
 private struct AddWineView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var name = ""; @State private var producer = ""; @State private var vintage = ""; @State private var grapes = ""; @State private var region = ""; @State private var imageData: Data?
+    @State private var name = ""; @State private var producer = ""; @State private var vintage = ""; @State private var grapes = ""; @State private var region = ""; @State private var imageData: Data?; @State private var backImageData: Data?
     let save: (WineBottle) -> Void
     var body: some View { NavigationStack { Form {
         Section("Bottle scan") {
@@ -939,13 +984,14 @@ private struct AddWineView: View {
             }
             Text("Capture the front label. You’ll review every detected field before it is applied.").font(.caption).foregroundStyle(.secondary)
         }
+        Section("Back label (optional)") { BackLabelPhotoControl(imageData: $backImageData) }
         Section("Bottle details") { TextField("Producer", text: $producer); TextField("Wine name", text: $name); TextField("Vintage", text: $vintage); TextField("Grape", text: $grapes); TextField("Region", text: $region) }
-    }.navigationTitle("Add wine").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Add") { guard !name.isEmpty else { return }; save(WineBottle(name: name, producer: producer.isEmpty ? "Unknown producer" : producer, vintage: vintage.isEmpty ? "NV" : vintage, grapes: grapes.isEmpty ? "Unknown grape" : grapes, region: region.isEmpty ? "Origin to add" : region, country: "Unknown", latitude: 0, longitude: 0, notes: [], imageData: imageData)); dismiss() } } } }.preferredColorScheme(.dark) }
+    }.navigationTitle("Add wine").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Add") { guard !name.isEmpty else { return }; save(WineBottle(name: name, producer: producer.isEmpty ? "Unknown producer" : producer, vintage: vintage.isEmpty ? "NV" : vintage, grapes: grapes.isEmpty ? "Unknown grape" : grapes, region: region.isEmpty ? "Origin to add" : region, country: "Unknown", latitude: 0, longitude: 0, notes: [], imageData: imageData, backImageData: backImageData)); dismiss() } } } }.preferredColorScheme(.dark) }
 }
 
 private struct AddScotchView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var name = ""; @State private var distillery = ""; @State private var age = ""; @State private var region = ""; @State private var cask = ""; @State private var abv = ""; @State private var imageData: Data?
+    @State private var name = ""; @State private var distillery = ""; @State private var age = ""; @State private var region = ""; @State private var cask = ""; @State private var abv = ""; @State private var imageData: Data?; @State private var backImageData: Data?
     let save: (ScotchBottle) -> Void
     var body: some View { NavigationStack { Form {
         Section("Bottle scan") {
@@ -954,8 +1000,9 @@ private struct AddScotchView: View {
             }
             Text("Capture the front label. You’ll review every detected field before it is applied.").font(.caption).foregroundStyle(.secondary)
         }
+        Section("Back label (optional)") { BackLabelPhotoControl(imageData: $backImageData) }
         Section("Bottle details") { TextField("Expression", text: $name); TextField("Distillery", text: $distillery); TextField("Age statement", text: $age); TextField("Region", text: $region); TextField("Cask", text: $cask); TextField("ABV", text: $abv) }
-    }.navigationTitle("Add Scotch").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Add") { guard !name.isEmpty else { return }; save(ScotchBottle(name: name, distillery: distillery.isEmpty ? "Unknown distillery" : distillery, ageStatement: age.isEmpty ? "No age statement" : age, region: region.isEmpty ? "Scotland" : region, cask: cask.isEmpty ? "To add" : cask, abv: abv.isEmpty ? "To add" : abv, latitude: 56.82, longitude: -4.97, notes: [], imageData: imageData)); dismiss() } } } }.preferredColorScheme(.dark) }
+    }.navigationTitle("Add Scotch").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Add") { guard !name.isEmpty else { return }; save(ScotchBottle(name: name, distillery: distillery.isEmpty ? "Unknown distillery" : distillery, ageStatement: age.isEmpty ? "No age statement" : age, region: region.isEmpty ? "Scotland" : region, cask: cask.isEmpty ? "To add" : cask, abv: abv.isEmpty ? "To add" : abv, latitude: 56.82, longitude: -4.97, notes: [], imageData: imageData, backImageData: backImageData)); dismiss() } } } }.preferredColorScheme(.dark) }
 }
 
 private struct EditWineView: View {
@@ -981,6 +1028,7 @@ private struct EditWineView: View {
             }
             if draft.imageData != nil { Button("Remove label photo", role: .destructive) { draft.imageData = nil } }
         }
+        Section("Back label (optional)") { BackLabelPhotoControl(imageData: $draft.backImageData) }
         Section("Bottle details") {
             TextField("Producer", text: $draft.producer)
             TextField("Wine name", text: $draft.name)
@@ -1023,6 +1071,7 @@ private struct EditScotchView: View {
             }
             if draft.imageData != nil { Button("Remove label photo", role: .destructive) { draft.imageData = nil } }
         }
+        Section("Back label (optional)") { BackLabelPhotoControl(imageData: $draft.backImageData) }
         Section("Bottle details") {
             TextField("Expression", text: $draft.name)
             TextField("Distillery", text: $draft.distillery)

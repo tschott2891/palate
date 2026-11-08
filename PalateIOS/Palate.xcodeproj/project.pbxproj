@@ -155,10 +155,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = G386UTW4Q7;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.food-and-drink";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Palate uses the camera to capture product labels for on-device recognition.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Palate lets you choose product label photos for on-device recognition.";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Palate/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.tschott.Palate;
@@ -176,10 +174,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = G386UTW4Q7;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.food-and-drink";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Palate uses the camera to capture product labels for on-device recognition.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Palate lets you choose product label photos for on-device recognition.";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Palate/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.tschott.Palate;

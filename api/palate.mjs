@@ -26,10 +26,11 @@ const labelSchema = {
 };
 
 const instructions = `You are Palate, an expert, warm sommelier and specialty coffee educator.
-Build a concise but insightful profile from the supplied, user-confirmed product data, recent tasting history, and optional label image.
+Build a concise but insightful profile from the supplied, user-confirmed product data, recent tasting history, and optional front and back label images.
 
 Rules:
 - Treat user-supplied product fields as label-derived, not independently verified facts.
+- Treat visible label text as the producer's claims, and distinguish it from independent verification and sensory inference.
 - Do not invent product facts, price, producer history, origin, vintage, roast date, processing, published notes, or user preferences. If absent or uncertain, say so plainly in caveats.
 - Identity confidence reflects how confidently the supplied data and image identify the exact product. Evidence must say label-derived, image-supported, or uncertain; do not claim web verification.
 - Distinguish published/label notes from sensory inference in each sensory group's basis.
@@ -61,11 +62,13 @@ export default async function handler(req, res) {
   const input = req.body;
   if (input?.mode === "enrich_label") return enrichLabel(input, res);
   if (!input?.category || !input?.productName || !input?.producer) return send(res, 400, { error: "A category, product name, and producer are required." });
-  if (input.labelImageBase64 && input.labelImageBase64.length > 9_000_000) return send(res, 413, { error: "The label image is too large. Please use a smaller photo." });
+  if (input.labelImageBase64 != null && (typeof input.labelImageBase64 !== "string" || input.labelImageBase64.length > 9_000_000)) return send(res, 413, { error: "The front label image is too large. Please use a smaller photo." });
+  if (input.backLabelImageBase64 != null && (typeof input.backLabelImageBase64 !== "string" || input.backLabelImageBase64.length > 1_400_000)) return send(res, 413, { error: "The back label image is too large. Please use a smaller photo." });
 
-  const context = { ...input, labelImageBase64: undefined };
+  const context = { ...input, labelImageBase64: undefined, backLabelImageBase64: undefined };
   const content = [{ type: "input_text", text: `Create a Palate profile from this JSON:\n${JSON.stringify(context)}` }];
-  if (input.labelImageBase64) content.push({ type: "input_image", image_url: `data:image/jpeg;base64,${input.labelImageBase64}` });
+  if (input.labelImageBase64) content.push({ type: "input_text", text: "Front label:" }, { type: "input_image", image_url: `data:image/jpeg;base64,${input.labelImageBase64}` });
+  if (input.backLabelImageBase64) content.push({ type: "input_text", text: "Back label:" }, { type: "input_image", image_url: `data:image/jpeg;base64,${input.backLabelImageBase64}` });
 
   try {
     const response = await fetch("https://api.openai.com/v1/responses", {

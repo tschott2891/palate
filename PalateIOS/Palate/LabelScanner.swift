@@ -122,6 +122,72 @@ struct LabelScanControl: View {
     }
 }
 
+struct BackLabelPhotoControl: View {
+    @Binding var imageData: Data?
+    @State private var showCamera = false
+    @State private var showPhotoPicker = false
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var errorMessage: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Add an optional photo of the back label for Ask Palate.")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: 12) {
+                Button { showCamera = true } label: { Label("Take photo", systemImage: "camera").frame(maxWidth: .infinity) }
+                    .buttonStyle(.bordered)
+                Button { showPhotoPicker = true } label: { Label("Choose from library", systemImage: "photo.on.rectangle").frame(maxWidth: .infinity) }
+                    .buttonStyle(.bordered)
+            }
+            if let imageData {
+                HStack(spacing: 12) {
+                    ScannerThumbnail(data: imageData)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Back label attached").font(.subheadline.weight(.semibold))
+                        Text("Choose another photo to replace it").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Button("Remove back photo", role: .destructive) { self.imageData = nil }
+            }
+        }
+        .fullScreenCover(isPresented: $showCamera) {
+            CameraPicker { image in
+                showCamera = false
+                if let image { attach(image) }
+            }
+            .ignoresSafeArea()
+        }
+        .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhoto, matching: .images)
+        .onChange(of: selectedPhoto) { _, item in
+            guard let item else { return }
+            Task {
+                do {
+                    guard let data = try await item.loadTransferable(type: Data.self), let image = UIImage(data: data) else {
+                        errorMessage = "The photo could not be opened. Please choose another photo."
+                        selectedPhoto = nil
+                        return
+                    }
+                    attach(image)
+                } catch {
+                    errorMessage = "The photo could not be opened. Please choose another photo."
+                }
+                selectedPhoto = nil
+            }
+        }
+        .alert("Couldn’t attach photo", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button("OK", role: .cancel) { errorMessage = nil }
+        } message: { Text(errorMessage ?? "Please try another photo.") }
+    }
+
+    private func attach(_ image: UIImage) {
+        guard let data = LabelImage.jpeg(image) else {
+            errorMessage = "The photo could not be prepared. Please try another photo."
+            return
+        }
+        imageData = data
+    }
+}
+
 private struct LabelScanReview: View {
     @Environment(\.dismiss) private var dismiss
     let result: LabelScanResult

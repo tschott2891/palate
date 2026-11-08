@@ -1,5 +1,7 @@
 import Foundation
 import Combine
+import CryptoKit
+import UIKit
 
 enum TastingCategory: String, Codable, CaseIterable, Identifiable {
     case coffee, wine, scotch
@@ -71,21 +73,45 @@ struct PalateProfileRequest: Codable {
     let attributes: [String: String]
     let recentTastings: [RecentTasting]
     let labelImageBase64: String?
+    let backLabelImageBase64: String?
 
     static func coffee(_ bag: CoffeeBag, records: [TastingRecord]) -> Self {
-        Self(category: .coffee, productName: bag.name, producer: bag.roaster, attributes: ["origin": bag.originDetail, "process": bag.process, "roaster notes": bag.notes.joined(separator: ", "), "last recipe": "\(Int(bag.lastDose))g coffee · \(Int(bag.lastWater))g water · grind \(bag.lastGrind)"], recentTastings: history(records), labelImageBase64: bag.imageData?.base64EncodedString())
+        Self(category: .coffee, productName: bag.name, producer: bag.roaster, attributes: ["origin": bag.originDetail, "process": bag.process, "roaster notes": bag.notes.joined(separator: ", "), "last recipe": "\(Int(bag.lastDose))g coffee · \(Int(bag.lastWater))g water · grind \(bag.lastGrind)"], recentTastings: history(records), labelImageBase64: LabelImage.forUpload(bag.imageData)?.base64EncodedString(), backLabelImageBase64: LabelImage.forUpload(bag.backImageData)?.base64EncodedString())
     }
 
     static func wine(_ bottle: WineBottle, records: [TastingRecord]) -> Self {
-        Self(category: .wine, productName: bottle.name, producer: bottle.producer, attributes: ["vintage": bottle.vintage, "grapes": bottle.grapes, "region": bottle.region, "country": bottle.country, "producer notes": bottle.notes.joined(separator: ", ")], recentTastings: history(records), labelImageBase64: bottle.imageData?.base64EncodedString())
+        Self(category: .wine, productName: bottle.name, producer: bottle.producer, attributes: ["vintage": bottle.vintage, "grapes": bottle.grapes, "region": bottle.region, "country": bottle.country, "producer notes": bottle.notes.joined(separator: ", ")], recentTastings: history(records), labelImageBase64: LabelImage.forUpload(bottle.imageData)?.base64EncodedString(), backLabelImageBase64: LabelImage.forUpload(bottle.backImageData)?.base64EncodedString())
     }
 
     static func scotch(_ bottle: ScotchBottle, records: [TastingRecord]) -> Self {
-        Self(category: .scotch, productName: bottle.name, producer: bottle.distillery, attributes: ["age statement": bottle.ageStatement, "region": bottle.region, "cask": bottle.cask, "ABV": bottle.abv, "distillery notes": bottle.notes.joined(separator: ", ")], recentTastings: history(records), labelImageBase64: bottle.imageData?.base64EncodedString())
+        Self(category: .scotch, productName: bottle.name, producer: bottle.distillery, attributes: ["age statement": bottle.ageStatement, "region": bottle.region, "cask": bottle.cask, "ABV": bottle.abv, "distillery notes": bottle.notes.joined(separator: ", ")], recentTastings: history(records), labelImageBase64: LabelImage.forUpload(bottle.imageData)?.base64EncodedString(), backLabelImageBase64: LabelImage.forUpload(bottle.backImageData)?.base64EncodedString())
     }
 
     private static func history(_ records: [TastingRecord]) -> [RecentTasting] {
         records.prefix(8).map { RecentTasting(date: $0.date, descriptors: $0.descriptors, rating: $0.rating, note: $0.note, context: $0.context, measurementLabel: $0.measurementLabel, measurementSeconds: $0.measurementSeconds) }
+    }
+}
+
+enum LabelImage {
+    static func forUpload(_ data: Data?) -> Data? {
+        guard let data, let image = UIImage(data: data) else { return nil }
+        return jpeg(image)
+    }
+
+    static func jpeg(_ image: UIImage) -> Data? {
+        let longestSide = max(image.size.width, image.size.height)
+        guard longestSide > 0 else { return nil }
+        for maxSide in [CGFloat(1600), 1200, 900, 600] {
+            let scale = min(1, maxSide / longestSide)
+            let size = CGSize(width: max(1, image.size.width * scale), height: max(1, image.size.height * scale))
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            let resized = UIGraphicsImageRenderer(size: size, format: format).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
+            for quality in [CGFloat(0.75), 0.55, 0.35] {
+                if let result = resized.jpegData(compressionQuality: quality), result.count <= 1_000_000 { return result }
+            }
+        }
+        return nil
     }
 }
 
@@ -103,6 +129,41 @@ struct PalateProfile: Codable {
     let caveats: [String]
 }
 
+struct CachedPalateProfile: Codable {
+    let requestSignature: String
+    let profile: PalateProfile
+    let updatedAt: Date
+}
+
+enum PalateProfileCache {
+    private static let keyPrefix = "palateProfile.v1"
+
+    static func load(productID: UUID, request: PalateProfileRequest) -> CachedPalateProfile? {
+        let key = storageKey(productID: productID, category: request.category)
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let cached = try? JSONDecoder().decode(CachedPalateProfile.self, from: data),
+              cached.requestSignature == signature(for: request) else { return nil }
+        return cached
+    }
+
+    static func save(_ profile: PalateProfile, productID: UUID, request: PalateProfileRequest) {
+        let cached = CachedPalateProfile(requestSignature: signature(for: request), profile: profile, updatedAt: .now)
+        guard let data = try? JSONEncoder().encode(cached) else { return }
+        UserDefaults.standard.set(data, forKey: storageKey(productID: productID, category: request.category))
+    }
+
+    private static func storageKey(productID: UUID, category: TastingCategory) -> String {
+        "\(keyPrefix).\(category.rawValue).\(productID.uuidString)"
+    }
+
+    private static func signature(for request: PalateProfileRequest) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = (try? encoder.encode(request)) ?? Data()
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+}
+
 enum PalateIntelligenceError: LocalizedError {
     case notConfigured, invalidResponse, service(String)
     var errorDescription: String? {
@@ -117,18 +178,38 @@ enum PalateIntelligenceError: LocalizedError {
 enum PalateIntelligenceService {
     static func profile(for request: PalateProfileRequest) async throws -> PalateProfile {
         guard let rawURL = Bundle.main.object(forInfoDictionaryKey: "PALATE_INTELLIGENCE_URL") as? String,
-              let url = URL(string: rawURL), !rawURL.isEmpty else { throw PalateIntelligenceError.notConfigured }
+              let url = URL(string: rawURL), !rawURL.isEmpty else {
+            print("PALATE_AI: Profile request stopped: PALATE_INTELLIGENCE_URL is missing from the app bundle")
+            throw PalateIntelligenceError.notConfigured
+        }
+        print("PALATE_AI: Sending profile request to \(url.host ?? "unknown host")")
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.httpBody = try JSONEncoder().encode(request)
-        let (data, response) = try await URLSession.shared.data(for: urlRequest)
-        guard let http = response as? HTTPURLResponse else { throw PalateIntelligenceError.invalidResponse }
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: urlRequest)
+        } catch {
+            print("PALATE_AI: Profile request network failure: \(error.localizedDescription)")
+            throw error
+        }
+        guard let http = response as? HTTPURLResponse else {
+            print("PALATE_AI: Profile request returned a non-HTTP response")
+            throw PalateIntelligenceError.invalidResponse
+        }
+        print("PALATE_AI: Profile endpoint returned HTTP \(http.statusCode)")
         guard (200..<300).contains(http.statusCode) else {
-            let message = (try? JSONDecoder().decode(PalateServiceError.self, from: data).error) ?? "Palate Intelligence is temporarily unavailable."
+            let message = (try? JSONDecoder().decode(PalateServiceError.self, from: data).error) ?? "Palate Intelligence is temporarily unavailable (HTTP \(http.statusCode))."
+            print("PALATE_AI: Profile request rejected with HTTP \(http.statusCode): \(message)")
             throw PalateIntelligenceError.service(message)
         }
-        guard let profile = try? JSONDecoder().decode(PalateProfile.self, from: data) else { throw PalateIntelligenceError.invalidResponse }
+        guard let profile = try? JSONDecoder().decode(PalateProfile.self, from: data) else {
+            print("PALATE_AI: Profile request returned HTTP 200 but the response could not be decoded")
+            throw PalateIntelligenceError.invalidResponse
+        }
+        print("PALATE_AI: Profile response decoded successfully")
         return profile
     }
 
@@ -175,6 +256,7 @@ struct CoffeeBag: Identifiable, Codable, Hashable {
     var county: String? = nil
     var roastDate: Date? = nil
     var imageData: Data? = nil
+    var backImageData: Data? = nil
     var lastDose: Double = 20
     var lastWater: Double = 320
     var lastGrind: String = "7.5"
@@ -188,11 +270,11 @@ struct CoffeeBag: Identifiable, Codable, Hashable {
         }.joined(separator: " · ")
     }
 
-    init(id: UUID = UUID(), name: String, roaster: String, origin: String, process: String, notes: [String], accent: String, estate: String? = nil, county: String? = nil, roastDate: Date? = nil, imageData: Data? = nil, lastDose: Double = 20, lastWater: Double = 320, lastGrind: String = "7.5", lastTip: String = "Keep this recipe close.", active: Bool = true) {
-        self.id = id; self.name = name; self.roaster = roaster; self.origin = origin; self.process = process; self.notes = notes; self.accent = accent; self.estate = estate; self.county = county; self.roastDate = roastDate; self.imageData = imageData; self.lastDose = lastDose; self.lastWater = lastWater; self.lastGrind = lastGrind; self.lastTip = lastTip; self.active = active
+    init(id: UUID = UUID(), name: String, roaster: String, origin: String, process: String, notes: [String], accent: String, estate: String? = nil, county: String? = nil, roastDate: Date? = nil, imageData: Data? = nil, backImageData: Data? = nil, lastDose: Double = 20, lastWater: Double = 320, lastGrind: String = "7.5", lastTip: String = "Keep this recipe close.", active: Bool = true) {
+        self.id = id; self.name = name; self.roaster = roaster; self.origin = origin; self.process = process; self.notes = notes; self.accent = accent; self.estate = estate; self.county = county; self.roastDate = roastDate; self.imageData = imageData; self.backImageData = backImageData; self.lastDose = lastDose; self.lastWater = lastWater; self.lastGrind = lastGrind; self.lastTip = lastTip; self.active = active
     }
 
-    enum CodingKeys: String, CodingKey { case id, name, roaster, origin, process, notes, accent, estate, county, roastDate, imageData, lastDose, lastWater, lastGrind, lastTip, active }
+    enum CodingKeys: String, CodingKey { case id, name, roaster, origin, process, notes, accent, estate, county, roastDate, imageData, backImageData, lastDose, lastWater, lastGrind, lastTip, active }
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -207,6 +289,7 @@ struct CoffeeBag: Identifiable, Codable, Hashable {
         county = try values.decodeIfPresent(String.self, forKey: .county)
         roastDate = try values.decodeIfPresent(Date.self, forKey: .roastDate)
         imageData = try values.decodeIfPresent(Data.self, forKey: .imageData)
+        backImageData = try values.decodeIfPresent(Data.self, forKey: .backImageData)
         lastDose = try values.decodeIfPresent(Double.self, forKey: .lastDose) ?? 20
         lastWater = try values.decodeIfPresent(Double.self, forKey: .lastWater) ?? 320
         lastGrind = try values.decodeIfPresent(String.self, forKey: .lastGrind) ?? "7.5"
@@ -322,6 +405,7 @@ struct WineBottle: Identifiable, Codable, Hashable {
     var name: String; var producer: String; var vintage: String; var grapes: String; var region: String; var country: String
     var latitude: Double; var longitude: Double; var notes: [String]
     var imageData: Data? = nil
+    var backImageData: Data? = nil
     static let examples = [
         WineBottle(name: "Willamette Valley Pinot Noir", producer: "Eyrie Vineyards", vintage: "2022", grapes: "Pinot Noir", region: "Willamette Valley, Oregon", country: "United States", latitude: 45.23, longitude: -123.14, notes: ["Cherry", "Rose", "Forest floor"]),
         WineBottle(name: "Barolo", producer: "G.D. Vajra", vintage: "2019", grapes: "Nebbiolo", region: "Piedmont", country: "Italy", latitude: 44.70, longitude: 7.95, notes: ["Tar", "Rose", "Sour cherry"])
@@ -333,6 +417,7 @@ struct ScotchBottle: Identifiable, Codable, Hashable {
     var name: String; var distillery: String; var ageStatement: String; var region: String; var cask: String; var abv: String
     var latitude: Double; var longitude: Double; var notes: [String]
     var imageData: Data? = nil
+    var backImageData: Data? = nil
     static let examples = [
         ScotchBottle(name: "The Balvenie DoubleWood", distillery: "The Balvenie", ageStatement: "12 years", region: "Speyside", cask: "Bourbon & sherry casks", abv: "40% ABV", latitude: 57.45, longitude: -3.13, notes: ["Honey", "Dried fruit", "Cinnamon"]),
         ScotchBottle(name: "Laphroaig 10", distillery: "Laphroaig", ageStatement: "10 years", region: "Islay", cask: "Ex-bourbon barrels", abv: "43% ABV", latitude: 55.63, longitude: -6.15, notes: ["Peat smoke", "Seaweed", "Vanilla"])
